@@ -1,7 +1,6 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import { videos as allVideos, categories } from "../../data/videos"
-import type { Video } from "../../data/types"
+import { useVideos, useCategories } from "../../hooks/useVideos"
 
 function formatDuration(s: number) {
   const m = Math.floor(s / 60)
@@ -16,13 +15,16 @@ function formatDate(d: string) {
 const PAGE_SIZE = 10
 
 export default function AdminVideos() {
-  const [list, setList] = useState<Video[]>(allVideos)
+  const { data: videos = [], isPending, isError } = useVideos("All")
+  const { data: cats = ["All"] } = useCategories()
+  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set())
   const [search, setSearch] = useState("")
   const [category, setCategory] = useState("All")
   const [page, setPage] = useState(1)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
-  const filtered = list.filter((v) => {
+  const filtered = videos.filter((v) => {
+    if (removedIds.has(v.id)) return false
     const matchSearch =
       !search ||
       v.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -35,8 +37,27 @@ export default function AdminVideos() {
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   function handleDelete(id: string) {
-    setList((prev) => prev.filter((v) => v.id !== id))
+    setRemovedIds((prev) => new Set(prev).add(id))
     setConfirmDelete(null)
+  }
+
+  if (isPending) {
+    return (
+      <div className="py-20 text-center">
+        <p className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--color-muted-foreground)" }}>
+          Loading videos…
+        </p>
+      </div>
+    )
+  }
+  if (isError) {
+    return (
+      <div className="py-20 text-center">
+        <p className="font-mono text-xs uppercase tracking-widest" style={{ color: "var(--color-muted-foreground)" }}>
+          Something went wrong loading videos.
+        </p>
+      </div>
+    )
   }
 
   return (
@@ -74,7 +95,7 @@ export default function AdminVideos() {
             color: "var(--color-foreground)",
           }}
         >
-          {categories.map((c) => (
+          {cats.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
@@ -121,6 +142,12 @@ export default function AdminVideos() {
                       <img
                         src={video.thumbnailUrl}
                         alt={video.title}
+                        onError={(e) => {
+                          const img = e.currentTarget
+                          if (img.dataset.fbk) return
+                          img.dataset.fbk = "1"
+                          img.src = img.src.replace(/maxresdefault|sddefault/, "hqdefault")
+                        }}
                         className="h-9 w-14 flex-shrink-0 rounded-sm object-cover"
                       />
                       <div className="min-w-0">

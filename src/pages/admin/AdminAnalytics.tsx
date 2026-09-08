@@ -1,7 +1,5 @@
 import { Link } from "react-router-dom"
-import { videos } from "../../data/videos"
-
-const totalWords = videos.reduce((acc, v) => acc + v.transcript.length, 0)
+import { useVideos } from "../../hooks/useVideos"
 
 const statTiles = [
   { label: "Total Views", value: "8,420", delta: "+12% this month" },
@@ -10,24 +8,35 @@ const statTiles = [
   { label: "Email CTR", value: "6.4%", delta: "industry avg: 2.1%" },
 ]
 
-// Compute real category counts
-const categoryMap: Record<string, number> = {}
-for (const v of videos) {
-  categoryMap[v.category] = (categoryMap[v.category] ?? 0) + 1
-}
-const categoryCounts = Object.entries(categoryMap).sort((a, b) => b[1] - a[1])
-const maxCat = Math.max(...categoryCounts.map(([, n]) => n))
-
-// Mock top videos
+// Mock view counts (no view tracking in the DB yet). Keyed by video id;
+// unknown ids fall back to 0 views.
 const mockViews: Record<string, number> = {
   v1: 2140, v2: 1870, v3: 1420, v4: 1280, v5: 980,
   v6: 720, v7: 540, v8: 310,
 }
-const topVideos = [...videos]
-  .sort((a, b) => (mockViews[b.id] ?? 0) - (mockViews[a.id] ?? 0))
-  .slice(0, 5)
 
 export default function AdminAnalytics() {
+  const { data: videos = [], isPending, isError } = useVideos("All")
+
+  const totalWords = videos.reduce((acc, v) => acc + v.transcript.length, 0)
+
+  const categoryMap: Record<string, number> = {}
+  for (const v of videos) {
+    categoryMap[v.category] = (categoryMap[v.category] ?? 0) + 1
+  }
+  const categoryCounts = Object.entries(categoryMap).sort((a, b) => b[1] - a[1])
+  const maxCat = Math.max(1, ...categoryCounts.map(([, n]) => n))
+
+  const topVideos = [...videos]
+    .sort((a, b) => (mockViews[b.id] ?? 0) - (mockViews[a.id] ?? 0))
+    .slice(0, 5)
+
+  if (isPending) {
+    return <p className="py-16 text-center font-mono text-xs" style={{ color: "var(--color-muted-foreground)" }}>Loading analytics…</p>
+  }
+  if (isError) {
+    return <p className="py-16 text-center font-mono text-xs" style={{ color: "var(--color-muted-foreground)" }}>Something went wrong loading analytics.</p>
+  }
   return (
     <div className="space-y-10">
       {/* Stat tiles */}
@@ -111,6 +120,12 @@ export default function AdminAnalytics() {
                 <img
                   src={video.thumbnailUrl}
                   alt={video.title}
+                  onError={(e) => {
+                    const img = e.currentTarget
+                    if (img.dataset.fbk) return
+                    img.dataset.fbk = "1"
+                    img.src = img.src.replace(/maxresdefault|sddefault/, "hqdefault")
+                  }}
                   className="h-9 w-14 flex-shrink-0 rounded-sm object-cover"
                 />
                 <div className="flex-1 min-w-0">
@@ -146,7 +161,7 @@ export default function AdminAnalytics() {
             {totalWords.toLocaleString()} words
           </p>
           <p className="font-mono text-xs mt-0.5" style={{ color: "var(--color-muted-foreground)" }}>
-            across {videos.length} videos — avg {Math.round(totalWords / videos.length).toLocaleString()} words/video
+            across {videos.length} videos — avg {videos.length ? Math.round(totalWords / videos.length).toLocaleString() : 0} words/video
           </p>
         </div>
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: "var(--color-accent)", opacity: 0.5 }}>

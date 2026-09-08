@@ -1,6 +1,6 @@
 import { useState, useEffect, useId, useRef } from "react"
 import { useParams, useSearchParams, Link, Navigate } from "react-router-dom"
-import { getVideoById } from "../data/videos"
+import { useVideo, useRelatedVideos } from "../hooks/useVideos"
 import { useYouTubePlayer } from "../hooks/useYouTubePlayer"
 import TranscriptPane from "../components/TranscriptPane"
 import ChapterList from "../components/ChapterList"
@@ -9,7 +9,6 @@ import ShareBar from "../components/ShareBar"
 import EmailCapture from "../components/EmailCapture"
 import AdSlot from "../components/AdSlot"
 import RelatedVideos from "../components/RelatedVideos"
-import { getRelatedVideos } from "../data/videos"
 import type { Video } from "../data/types"
 
 function formatDate(dateStr: string) {
@@ -61,7 +60,7 @@ function VideoDetail({ video, tParam }: { video: Video; tParam: number }) {
   }
 
   const isSticky = playerOpen && isActive
-  const related = getRelatedVideos(video)
+  const { data: related = [] } = useRelatedVideos(video)
 
   return (
     <main className="page-enter mx-auto max-w-5xl px-6 py-10">
@@ -78,7 +77,17 @@ function VideoDetail({ video, tParam }: { video: Video; tParam: number }) {
       {/* Thumbnail — shown when player is closed */}
       {!playerOpen && (
         <div className="relative mb-10 overflow-hidden rounded-sm bg-[var(--color-muted)]" style={{ aspectRatio: "16/9" }}>
-          <img src={video.thumbnailUrl} alt={video.title} className="h-full w-full object-cover" />
+          <img
+            src={video.thumbnailUrl}
+            alt={video.title}
+            onError={(e) => {
+              const img = e.currentTarget
+              if (img.dataset.fbk) return
+              img.dataset.fbk = "1"
+              img.src = img.src.replace(/maxresdefault|sddefault/, "hqdefault")
+            }}
+            className="h-full w-full object-cover"
+          />
           <div className="absolute inset-0 bg-black/20" />
           <p className="absolute bottom-4 left-4 font-mono text-xs uppercase tracking-widest text-white/70">
             Click any word or chapter to start playback
@@ -195,8 +204,21 @@ export default function VideoPage() {
   const { id } = useParams<{ id: string }>()
   const [searchParams] = useSearchParams()
   const tParam = Number(searchParams.get("t") ?? 0)
-  const video = getVideoById(id ?? "")
+  const { data: video, isPending, isError } = useVideo(id ?? "")
 
-  if (!video) return <Navigate to="/" replace />
+  if (isPending) {
+    return (
+      <main className="page-enter mx-auto max-w-5xl px-6 py-16">
+        <div className="animate-pulse space-y-6">
+          <div className="h-4 w-40 rounded bg-[var(--color-muted)]" />
+          <div className="aspect-video w-full rounded-sm bg-[var(--color-muted)]" />
+          <div className="h-10 w-2/3 rounded bg-[var(--color-muted)]" />
+          <div className="h-4 w-1/2 rounded bg-[var(--color-muted)]" />
+        </div>
+      </main>
+    )
+  }
+
+  if (isError || !video) return <Navigate to="/" replace />
   return <VideoDetail video={video} tParam={tParam} />
 }

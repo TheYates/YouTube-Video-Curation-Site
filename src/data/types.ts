@@ -32,3 +32,10 @@ export interface Video {
   tags: string[]
   affiliateLinks?: AffiliateLink[]
 }
+
+export interface SearchHit {
+  video: Video
+  snippet: string
+  matchTime: number
+  matchIn: string
+}

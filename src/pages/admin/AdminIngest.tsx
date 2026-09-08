@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { videos } from "../../data/videos"
+import { useVideos } from "../../hooks/useVideos"
+import { USE_SUPABASE, SUPABASE_URL, SUPABASE_ANON_KEY } from "../../lib/env"
 
 type StepStatus = "idle" | "running" | "done"
 
@@ -11,7 +12,7 @@ interface Step {
 
 const INITIAL_STEPS: Step[] = [
   { label: "Fetching video metadata", status: "idle" },
-  { label: "Extracting transcript via Whisper", status: "idle" },
+  { label: USE_SUPABASE ? "Extracting transcript (captions → Whisper)" : "Extracting transcript via Whisper", status: "idle" },
   { label: "Generating AI summary & chapters", status: "idle" },
   { label: "Publishing page", status: "idle" },
 ]
@@ -36,11 +37,73 @@ export default function AdminIngest() {
   const [processing, setProcessing] = useState(false)
   const [done, setDone] = useState(false)
   const [error, setError] = useState("")
+  const [warn, setWarn] = useState("")
+  const { data: videos = [] } = useVideos("All")
+
+  // Live pipeline: POSTs to the deployed Supabase Edge Function and animates
+  // through its server-side stages while the request is in flight.
+  async function runRealPipeline(ytUrl: string) {
+    setError("")
+    setWarn("")
+    setProcessing(true)
+    setDone(false)
+    setSteps(INITIAL_STEPS.map((s) => ({ ...s, status: "idle" as StepStatus })))
+
+    let stage = 0
+    const tick = setInterval(() => {
+      stage = Math.min(stage + 1, 2)
+      setSteps((prev) =>
+        prev.map((s, idx) => ({
+          ...s,
+          status: idx < stage ? "done" : idx === stage ? "running" : "idle",
+        }))
+      )
+    }, 4000)
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ingest`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ youtubeUrl: ytUrl }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.error ?? `Ingest failed (HTTP ${res.status})`)
+      let warning = ""
+      if (body.transcriptSource === "none") {
+        warning = "Published without a transcript — no captions found and the Whisper fallback failed. See the function logs in Supabase."
+      } else if (!body.aiOk) {
+        warning = "Published with a placeholder summary — the Groq call failed. Verify GROQ_API_KEY in function secrets."
+      }
+      setWarn(warning)
+      clearInterval(tick)
+      setSteps((prev) => prev.map((s) => ({ ...s, status: "done" as StepStatus })))
+      setProcessing(false)
+      setDone(true)
+      setUrl("")
+      // Stay on the page when there's a warning so it can be read/copied.
+      if (!warning) {
+        setTimeout(() => navigate("/admin/videos"), 1800)
+      }
+    } catch (e) {
+      clearInterval(tick)
+      setProcessing(false)
+      setSteps(INITIAL_STEPS.map((s) => ({ ...s, status: "idle" as StepStatus })))
+      setError(e instanceof Error ? e.message : "Ingest failed. Check the function logs in Supabase.")
+    }
+  }
 
   function runPipeline() {
     const ytId = extractYouTubeId(url)
     if (!ytId) {
       setError("Could not parse a YouTube video ID from that URL. Try pasting the full URL.")
+      return
+    }
+    if (USE_SUPABASE) {
+      runRealPipeline(url)
       return
     }
     setError("")
@@ -148,8 +211,26 @@ export default function AdminIngest() {
             style={{ borderColor: "var(--color-accent)", background: "color-mix(in srgb, var(--color-accent) 8%, transparent)" }}
           >
             <p className="text-sm" style={{ color: "var(--color-accent)" }}>
-              Page published. Redirecting to library…
+              Page published.{!warn && " Redirecting to library…"}
             </p>
+          </div>
+        )}
+
+        {done && warn && (
+          <div className="rounded-sm border border-amber-500/50 bg-amber-500/10 px-4 py-3 space-y-2">
+            <p className="text-xs leading-relaxed text-amber-700">{warn}</p>
+            <Link
+              to="/admin/videos"
+              className="inline-block font-mono text-xs uppercase tracking-widest text-amber-700 hover:underline"
+            >
+              Go to library →
+            </Link>
+          </div>
+        )}
+
+        {done && warn && (
+          <div className="rounded-sm border border-amber-500/50 bg-amber-500/10 px-4 py-3">
+            <p className="text-xs leading-relaxed text-amber-700">{warn}</p>
           </div>
         )}
       </div>
@@ -159,9 +240,10 @@ export default function AdminIngest() {
         style={{ borderColor: "var(--color-border)", background: "var(--color-muted)" }}
       >
         <p className="text-xs leading-relaxed" style={{ color: "var(--color-muted-foreground)" }}>
-          <span style={{ color: "var(--color-foreground)" }}>Production note:</span> This UI calls a backend worker
-          that runs the YouTube Data API, Groq Whisper transcription, and a Groq LLaMA summarization chain.
-          The result is written to the database and the CDN edge cache is purged automatically.
+          <span style={{ color: "var(--color-foreground)" }}>{USE_SUPABASE ? "Live pipeline:" : "Production note:"}</span>{" "}
+          {USE_SUPABASE
+            ? "This posts to the deployed Supabase Edge Function, which runs YouTube metadata → captions → Groq LLaMA and writes the video row to the database."
+            : "This UI calls a backend worker that runs the YouTube Data API, Groq Whisper transcription, and a Groq LLaMA summarization chain. The result is written to the database and the CDN edge cache is purged automatically."}
         </p>
       </div>
 

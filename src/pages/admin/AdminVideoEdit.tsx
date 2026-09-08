@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useParams, Navigate, Link } from "react-router-dom"
-import { getVideoById, categories } from "../../data/videos"
+import { useVideo, useCategories } from "../../hooks/useVideos"
 import type { AffiliateLink } from "../../data/types"
 
 function InputField({ label, value, onChange, type = "text", rows }: {
@@ -43,7 +43,8 @@ function InputField({ label, value, onChange, type = "text", rows }: {
 
 export default function AdminVideoEdit() {
   const { id } = useParams<{ id: string }>()
-  const video = getVideoById(id ?? "")
+  const { data: video, isPending } = useVideo(id ?? "")
+  const { data: cats = ["All"] } = useCategories()
 
   const [title, setTitle] = useState("")
   const [channel, setChannel] = useState("")
@@ -67,6 +68,9 @@ export default function AdminVideoEdit() {
     setAffiliateLinks(video.affiliateLinks ?? [])
   }, [video])
 
+  if (isPending) {
+    return <p className="py-16 text-center font-mono text-xs" style={{ color: "var(--color-muted-foreground)" }}>Loading video…</p>
+  }
   if (!video) return <Navigate to="/admin/videos" replace />
 
   const tags = tagsInput.split(",").map((t) => t.trim()).filter(Boolean)
@@ -115,7 +119,7 @@ export default function AdminVideoEdit() {
               className="w-full rounded-sm border px-3 py-2 text-sm outline-none transition-colors focus:border-[var(--color-accent)]"
               style={inputBase}
             >
-              {categories.filter((c) => c !== "All").map((c) => (
+              {cats.filter((c) => c !== "All").map((c) => (
                 <option key={c} value={c}>{c}</option>
               ))}
             </select>
@@ -275,6 +279,12 @@ export default function AdminVideoEdit() {
           <img
             src={video.thumbnailUrl}
             alt={title}
+            onError={(e) => {
+              const img = e.currentTarget
+              if (img.dataset.fbk) return
+              img.dataset.fbk = "1"
+              img.src = img.src.replace(/maxresdefault|sddefault/, "hqdefault")
+            }}
             className="w-full object-cover"
             style={{ aspectRatio: "16/9" }}
           />

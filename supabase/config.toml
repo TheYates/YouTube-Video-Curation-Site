@@ -1,0 +1,8 @@
+[functions.ingest]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/ingest/index.ts"
+
+# verify_jwt = false lets the admin UI call this with the anon key.
+# Lock it down before exposing publicly: require Supabase Auth and check an
+# admin allow-list inside the function.

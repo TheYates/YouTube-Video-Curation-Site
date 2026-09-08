@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useSearchParams, Link } from "react-router-dom"
-import { searchVideos } from "../data/videos"
+import { useSearch } from "../hooks/useVideos"
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60)
@@ -35,7 +35,7 @@ export default function SearchPage() {
     setInputValue(query)
   }, [query])
 
-  const results = searchVideos(query)
+  const { data: results = [], isFetching } = useSearch(query)
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault()
@@ -69,13 +69,19 @@ export default function SearchPage() {
       {query && (
         <div className="mb-6">
           <p className="font-mono text-xs text-[var(--color-muted-foreground)]">
-            {results.length} result{results.length !== 1 ? "s" : ""} for{" "}
-            <span className="text-[var(--color-foreground)]">&ldquo;{query}&rdquo;</span>
+            {isFetching ? (
+              "Searching…"
+            ) : (
+              <>
+                {results.length} result{results.length !== 1 ? "s" : ""} for{" "}
+                <span className="text-[var(--color-foreground)]">&ldquo;{query}&rdquo;</span>
+              </>
+            )}
           </p>
         </div>
       )}
 
-      {results.length === 0 && query && (
+      {!isFetching && results.length === 0 && query && (
         <div className="py-20 text-center">
           <p className="text-2xl text-[var(--color-muted-foreground)]">No matches found.</p>
           <p className="mt-2 text-sm text-[var(--color-muted-foreground)]">
@@ -96,6 +102,12 @@ export default function SearchPage() {
                 <img
                   src={result.video.thumbnailUrl}
                   alt={result.video.title}
+                  onError={(e) => {
+                    const img = e.currentTarget
+                    if (img.dataset.fbk) return
+                    img.dataset.fbk = "1"
+                    img.src = img.src.replace(/maxresdefault|sddefault/, "hqdefault")
+                  }}
                   className="h-16 w-28 rounded-sm object-cover"
                 />
               </div>

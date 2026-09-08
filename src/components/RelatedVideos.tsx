@@ -18,6 +18,12 @@ export default function RelatedVideos({ videos }: Props) {
             <img
               src={video.thumbnailUrl}
               alt={video.title}
+              onError={(e) => {
+                const img = e.currentTarget
+                if (img.dataset.fbk) return
+                img.dataset.fbk = "1"
+                img.src = img.src.replace(/maxresdefault|sddefault/, "hqdefault")
+              }}
               className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
             />
           </div>

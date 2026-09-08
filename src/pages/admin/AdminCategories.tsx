@@ -1,18 +1,28 @@
 import { useState } from "react"
-import { videos } from "../../data/videos"
-
-const initialCategories = Array.from(new Set(videos.map((v) => v.category)))
-
-function countVideos(cat: string) {
-  return videos.filter((v) => v.category === cat).length
-}
+import { useVideos, useCategories } from "../../hooks/useVideos"
 
 export default function AdminCategories() {
-  const [cats, setCats] = useState(initialCategories)
+  const { data: videos = [], isPending, isError } = useVideos("All")
+  const { data: catsQuery = ["All"] } = useCategories()
+  const [cats, setCats] = useState<string[] | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
   const [editValue, setEditValue] = useState("")
   const [newCat, setNewCat] = useState("")
   const [error, setError] = useState("")
+
+  const base = catsQuery.filter((c) => c !== "All")
+  const list = cats ?? base
+
+  function countVideos(cat: string) {
+    return videos.filter((v) => v.category === cat).length
+  }
+
+  if (isPending) {
+    return <p className="py-16 text-center font-mono text-xs" style={{ color: "var(--color-muted-foreground)" }}>Loading categories…</p>
+  }
+  if (isError) {
+    return <p className="py-16 text-center font-mono text-xs" style={{ color: "var(--color-muted-foreground)" }}>Something went wrong loading categories.</p>
+  }
 
   function startEdit(cat: string) {
     setEditing(cat)
@@ -22,28 +32,28 @@ export default function AdminCategories() {
   function confirmEdit(oldName: string) {
     const trimmed = editValue.trim()
     if (!trimmed) return
-    if (cats.includes(trimmed) && trimmed !== oldName) {
+    if (list.includes(trimmed) && trimmed !== oldName) {
       setError("A category with that name already exists.")
       return
     }
-    setCats((prev) => prev.map((c) => (c === oldName ? trimmed : c)))
+    setCats(list.map((c) => (c === oldName ? trimmed : c)))
     setEditing(null)
     setError("")
   }
 
   function handleDelete(cat: string) {
     if (countVideos(cat) > 0) return
-    setCats((prev) => prev.filter((c) => c !== cat))
+    setCats(list.filter((c) => c !== cat))
   }
 
   function handleAdd() {
     const trimmed = newCat.trim()
     if (!trimmed) return
-    if (cats.includes(trimmed)) {
+    if (list.includes(trimmed)) {
       setError("Category already exists.")
       return
     }
-    setCats((prev) => [...prev, trimmed])
+    setCats([...list, trimmed])
     setNewCat("")
     setError("")
   }
@@ -55,12 +65,12 @@ export default function AdminCategories() {
         className="rounded-sm border overflow-hidden"
         style={{ borderColor: "var(--color-border)", background: "var(--color-card)" }}
       >
-        {cats.length === 0 ? (
+        {list.length === 0 ? (
           <p className="py-10 text-center font-mono text-xs" style={{ color: "var(--color-muted-foreground)" }}>
             No categories yet.
           </p>
         ) : (
-          cats.map((cat, i) => {
+          list.map((cat, i) => {
             const count = countVideos(cat)
             const isEditing = editing === cat
             return (

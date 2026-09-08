@@ -1,13 +1,31 @@
 import { useState } from "react"
-import { videos, categories, getVideosByCategory } from "../data/videos"
+import { useVideos, useCategories } from "../hooks/useVideos"
 import VideoCard from "../components/VideoCard"
 import CategoryTabs from "../components/CategoryTabs"
 import EmailCapture from "../components/EmailCapture"
 import AdSlot from "../components/AdSlot"
 
+function VideoCardSkeleton() {
+  return (
+    <div className="mb-6 animate-pulse rounded-sm border border-[var(--color-border)] bg-[var(--color-card)] p-5">
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-[1fr_200px]">
+        <div className="space-y-3">
+          <div className="h-3 w-24 rounded bg-[var(--color-muted)]" />
+          <div className="h-5 w-3/4 rounded bg-[var(--color-muted)]" />
+          <div className="h-4 w-full rounded bg-[var(--color-muted)]" />
+          <div className="h-4 w-2/3 rounded bg-[var(--color-muted)]" />
+        </div>
+        <div className="aspect-video w-full rounded-sm bg-[var(--color-muted)]" />
+      </div>
+    </div>
+  )
+}
+
 export default function HomePage() {
   const [activeCategory, setActiveCategory] = useState("Finance")
-  const filtered = getVideosByCategory(activeCategory)
+  const { data: filtered = [], isPending, isError } = useVideos(activeCategory)
+  const { data: allVideos = [] } = useVideos("All")
+  const { data: cats = ["All"] } = useCategories()
 
   return (
     <main className="page-enter mx-auto max-w-5xl px-6 py-12">
@@ -26,7 +44,7 @@ export default function HomePage() {
         </p>
         <div className="mt-4 flex items-center gap-2">
           <span className="font-mono text-xs text-[var(--color-muted-foreground)]">
-            {videos.length} videos · {categories.length - 1} categories
+            {allVideos.length} videos · {cats.length - 1} categories
           </span>
         </div>
       </div>
@@ -35,7 +53,7 @@ export default function HomePage() {
 
       <div className="mb-8">
         <CategoryTabs
-          categories={categories}
+          categories={cats}
           active={activeCategory}
           onChange={setActiveCategory}
         />
@@ -46,7 +64,17 @@ export default function HomePage() {
       </div>
 
       <div>
-        {filtered.length === 0 ? (
+        {isPending ? (
+          <div>
+            {Array.from({ length: 3 }).map((_, i) => (
+              <VideoCardSkeleton key={i} />
+            ))}
+          </div>
+        ) : isError ? (
+          <p className="py-16 text-center text-[var(--color-muted-foreground)]">
+            Something went wrong loading videos.
+          </p>
+        ) : filtered.length === 0 ? (
           <p className="py-16 text-center text-[var(--color-muted-foreground)]">No videos in this category yet.</p>
         ) : (
           filtered.map((video) => <VideoCard key={video.id} video={video} />)
