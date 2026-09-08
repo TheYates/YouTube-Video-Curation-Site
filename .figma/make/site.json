@@ -1,0 +1,10 @@
+{
+  "description": "Curates YouTube videos with synced clickable transcripts, AI summaries, and site-wide transcript search for effortless content discovery across categories.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

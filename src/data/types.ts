@@ -1,0 +1,34 @@
+export interface TranscriptWord {
+  text: string
+  startTime: number
+  endTime: number
+}
+
+export interface Chapter {
+  title: string
+  startTime: number
+  description: string
+}
+
+export interface AffiliateLink {
+  label: string
+  url: string
+  disclosure: string
+}
+
+export interface Video {
+  id: string
+  youtubeId: string
+  title: string
+  channelName: string
+  publishedAt: string
+  durationSeconds: number
+  category: string
+  thumbnailUrl: string
+  summary: string
+  takeaways: string[]
+  chapters: Chapter[]
+  transcript: TranscriptWord[]
+  tags: string[]
+  affiliateLinks?: AffiliateLink[]
+}
