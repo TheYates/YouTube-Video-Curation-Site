@@ -1,5 +1,6 @@
-import { Outlet, NavLink, Link, useLocation } from "react-router-dom"
+import { Outlet, NavLink, Link, useLocation, useNavigate } from "react-router-dom"
 import { NEWSLETTER_ENABLED } from "../lib/env"
+import { useAuth } from "../lib/auth"
 
 const navItems = [
   {
@@ -31,6 +32,15 @@ const navItems = [
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <circle cx="12" cy="12" r="10" />
         <path d="M12 8v8M8 12h8" />
+      </svg>
+    ),
+  },
+  {
+    to: "/admin/sources",
+    label: "Sources",
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M19 21l-7-4-7 4V5a2 2 0 012-2h10a2 2 0 012 2z" />
       </svg>
     ),
   },
@@ -74,6 +84,7 @@ const sectionTitles: Record<string, string> = {
   "/admin/dashboard": "Dashboard",
   "/admin/videos": "Video Library",
   "/admin/ingest": "Ingest Video",
+  "/admin/sources": "Source Channels",
   "/admin/categories": "Categories",
   "/admin/subscribers": "Subscribers",
   "/admin/analytics": "Analytics",
@@ -81,6 +92,8 @@ const sectionTitles: Record<string, string> = {
 
 export default function AdminLayout() {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { user, signOut } = useAuth()
   const title =
     Object.entries(sectionTitles).find(([path]) => location.pathname.startsWith(path))?.[1] ?? "Admin"
 
@@ -145,8 +158,23 @@ export default function AdminLayout() {
           ))}
         </nav>
 
-        {/* Back to site */}
-        <div className="px-3 py-4 border-t" style={{ borderColor: "var(--color-border)" }}>
+        {/* Session + back to site */}
+        <div className="px-3 py-4 border-t space-y-1" style={{ borderColor: "var(--color-border)" }}>
+          {user?.email && (
+            <p className="truncate px-3 font-mono text-[10px]" style={{ color: "var(--color-muted-foreground)" }}>
+              {user.email}
+            </p>
+          )}
+          <button
+            onClick={() => signOut().then(() => navigate("/admin/login", { replace: true }))}
+            className="flex w-full items-center gap-2 px-3 py-2 text-xs font-mono uppercase tracking-wide transition-colors hover:text-[var(--color-foreground)]"
+            style={{ color: "var(--color-muted-foreground)" }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
+            </svg>
+            Sign out
+          </button>
           <Link
             to="/"
             className="flex items-center gap-2 px-3 py-2 text-xs font-mono uppercase tracking-wide transition-colors hover:text-[var(--color-foreground)]"
