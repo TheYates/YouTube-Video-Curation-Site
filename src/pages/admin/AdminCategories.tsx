@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { toast } from "sonner"
 import { useVideos, useCategories } from "../../hooks/useVideos"
 
 export default function AdminCategories() {
@@ -8,7 +9,6 @@ export default function AdminCategories() {
   const [editing, setEditing] = useState<string | null>(null)
   const [editValue, setEditValue] = useState("")
   const [newCat, setNewCat] = useState("")
-  const [error, setError] = useState("")
 
   const base = catsQuery.filter((c) => c !== "All")
   const list = cats ?? base
@@ -33,29 +33,30 @@ export default function AdminCategories() {
     const trimmed = editValue.trim()
     if (!trimmed) return
     if (list.includes(trimmed) && trimmed !== oldName) {
-      setError("A category with that name already exists.")
+      toast.error("A category with that name already exists.")
       return
     }
     setCats(list.map((c) => (c === oldName ? trimmed : c)))
     setEditing(null)
-    setError("")
+    toast.success(`Renamed to “${trimmed}”`)
   }
 
   function handleDelete(cat: string) {
     if (countVideos(cat) > 0) return
     setCats(list.filter((c) => c !== cat))
+    toast.success(`Deleted “${cat}”`)
   }
 
   function handleAdd() {
     const trimmed = newCat.trim()
     if (!trimmed) return
     if (list.includes(trimmed)) {
-      setError("Category already exists.")
+      toast.error("Category already exists.")
       return
     }
     setCats([...list, trimmed])
     setNewCat("")
-    setError("")
+    toast.success(`Added “${trimmed}”`)
   }
 
   return (
@@ -149,8 +150,6 @@ export default function AdminCategories() {
           })
         )}
       </div>
-
-      {error && <p className="text-xs text-red-600">{error}</p>}
 
       {/* Add category */}
       <div>

@@ -1,24 +1,48 @@
 import { Link } from "react-router-dom"
-import { useVideos } from "../../hooks/useVideos"
+import { useVideos, usePageViews } from "../../hooks/useVideos"
 
-const statTiles = [
-  { label: "Total Views", value: "8,420", delta: "+12% this month" },
-  { label: "Avg. Time on Page", value: "4m 12s", delta: "+0:18 vs last month" },
-  { label: "Search Queries", value: "1,203", delta: "343 unique queries" },
-  { label: "Email CTR", value: "6.4%", delta: "industry avg: 2.1%" },
-]
-
-// Mock view counts (no view tracking in the DB yet). Keyed by video id;
-// unknown ids fall back to 0 views.
-const mockViews: Record<string, number> = {
-  v1: 2140, v2: 1870, v3: 1420, v4: 1280, v5: 980,
-  v6: 720, v7: 540, v8: 310,
-}
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
 
 export default function AdminAnalytics() {
-  const { data: videos = [], isPending, isError } = useVideos("All")
+  const { data: videos = [], isPending: videosPending, isError } = useVideos("All")
+  const { data: views = { viewsByVideo: {}, totalViews: 0, viewsLast30d: 0, trackingLive: false }, isPending: viewsPending } = usePageViews()
 
   const totalWords = videos.reduce((acc, v) => acc + v.transcript.length, 0)
+  const totalChapters = videos.reduce((acc, v) => acc + v.chapters.length, 0)
+  const chaptersWithFrames = videos.reduce(
+    (acc, v) => acc + v.chapters.filter((c) => c.imageUrl).length,
+    0
+  )
+  const recentVideos = videos.filter(
+    (v) => Date.now() - new Date(v.publishedAt).getTime() < THIRTY_DAYS_MS
+  ).length
+
+  const statTiles = [
+    {
+      label: "Total Views",
+      value: views.totalViews.toLocaleString(),
+      delta: views.trackingLive
+        ? `${views.viewsLast30d.toLocaleString()} in last 30 days`
+        : "tracking not set up yet",
+    },
+    {
+      label: "Total Videos",
+      value: String(videos.length),
+      delta: recentVideos > 0 ? `+${recentVideos} published in last 30 days` : "no new videos in 30 days",
+    },
+    {
+      label: "Transcript Words",
+      value: totalWords.toLocaleString(),
+      delta: videos.length ? `avg ${Math.round(totalWords / videos.length).toLocaleString()}/video` : "no videos yet",
+    },
+    {
+      label: "Chapters",
+      value: String(totalChapters),
+      delta: totalChapters
+        ? `${Math.round((chaptersWithFrames / totalChapters) * 100)}% with frame stills`
+        : "no chapters yet",
+    },
+  ]
 
   const categoryMap: Record<string, number> = {}
   for (const v of videos) {
@@ -28,10 +52,10 @@ export default function AdminAnalytics() {
   const maxCat = Math.max(1, ...categoryCounts.map(([, n]) => n))
 
   const topVideos = [...videos]
-    .sort((a, b) => (mockViews[b.id] ?? 0) - (mockViews[a.id] ?? 0))
+    .sort((a, b) => (views.viewsByVideo[b.id] ?? 0) - (views.viewsByVideo[a.id] ?? 0))
     .slice(0, 5)
 
-  if (isPending) {
+  if (videosPending || viewsPending) {
     return <p className="py-16 text-center font-mono text-xs" style={{ color: "var(--color-muted-foreground)" }}>Loading analytics…</p>
   }
   if (isError) {
@@ -39,6 +63,16 @@ export default function AdminAnalytics() {
   }
   return (
     <div className="space-y-10">
+      {!views.trackingLive && (
+        <div className="rounded-sm border border-amber-500/50 bg-amber-500/10 px-4 py-3">
+          <p className="text-xs leading-relaxed text-amber-700">
+            View tracking isn’t set up yet — run{" "}
+            <code className="font-mono">supabase/migrations/20260908_page_views.sql</code>{" "}
+            in the Supabase SQL editor. Views start accumulating from the next video page visit.
+          </p>
+        </div>
+      )}
+
       {/* Stat tiles */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {statTiles.map((tile) => (
@@ -70,6 +104,11 @@ export default function AdminAnalytics() {
             className="rounded-sm border p-5 space-y-4"
             style={{ borderColor: "var(--color-border)", background: "var(--color-card)" }}
           >
+            {categoryCounts.length === 0 && (
+              <p className="text-sm" style={{ color: "var(--color-muted-foreground)" }}>
+                No videos yet — ingest one to see the breakdown.
+              </p>
+            )}
             {categoryCounts.map(([cat, count]) => (
               <div key={cat}>
                 <div className="mb-1.5 flex items-center justify-between">
@@ -95,7 +134,7 @@ export default function AdminAnalytics() {
           </div>
         </div>
 
-        {/* Top 5 videos */}
+        {/* Top 5 videos by real views */}
         <div>
           <h2 className="mb-5 font-mono text-xs uppercase tracking-widest" style={{ color: "var(--color-accent)" }}>
             Top Videos by Views
@@ -104,6 +143,11 @@ export default function AdminAnalytics() {
             className="rounded-sm border overflow-hidden"
             style={{ borderColor: "var(--color-border)", background: "var(--color-card)" }}
           >
+            {topVideos.length === 0 && (
+              <p className="px-4 py-6 text-sm" style={{ color: "var(--color-muted-foreground)" }}>
+                No videos yet.
+              </p>
+            )}
             {topVideos.map((video, i) => (
               <Link
                 key={video.id}
@@ -140,11 +184,16 @@ export default function AdminAnalytics() {
                   </span>
                 </div>
                 <span className="flex-shrink-0 font-mono text-xs tabular-nums" style={{ color: "var(--color-muted-foreground)" }}>
-                  {(mockViews[video.id] ?? 0).toLocaleString()} views
+                  {(views.viewsByVideo[video.id] ?? 0).toLocaleString()} views
                 </span>
               </Link>
             ))}
           </div>
+          {views.trackingLive && views.totalViews === 0 && topVideos.length > 0 && (
+            <p className="mt-2 font-mono text-[10px]" style={{ color: "var(--color-muted-foreground)" }}>
+              Tracking is live — open any video page and these counts start moving.
+            </p>
+          )}
         </div>
       </div>
 

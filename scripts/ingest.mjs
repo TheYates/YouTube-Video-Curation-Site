@@ -3,7 +3,9 @@
 // Metadata (YouTube Data API) → captions (yt-dlp, json3 word timings) →
 // Groq LLaMA (summary/chapters, model fallback chain) → Supabase write.
 //
-// Usage: node scripts/ingest.mjs <youtube-url> [--force]
+// Usage: node scripts/ingest.mjs <youtube-url> [more urls...] [--force]
+//   Accepts multiple URLs: runs sequentially, skips failures, prints a
+//   per-video summary at the end (exit 1 iff any video failed).
 //   --force wipes any existing row for the video (even healthy ones) and
 //   re-ingests. Without it, healthy rows are kept; hollow rows (0 transcript
 //   words) are automatically deleted and reprocessed.
@@ -15,6 +17,9 @@ import dotenv from "dotenv";
 dotenv.config({ path: new URL("./.env", import.meta.url) });
 
 import youtubedl from "youtube-dl-exec";
+import { existsSync, readFileSync, statSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, YOUTUBE_API_KEY, GROQ_API_KEY } = process.env;
@@ -25,10 +30,10 @@ for (const [k, v] of Object.entries({ SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, Y
   }
 }
 
-const url = process.argv[2];
 const force = process.argv.includes("--force");
-if (!url) {
-  console.error("Usage: node scripts/ingest.mjs <youtube-url> [--force]");
+const urls = process.argv.slice(2).filter((a) => !a.startsWith("-"));
+if (!urls.length) {
+  console.error("Usage: node scripts/ingest.mjs <youtube-url> [more urls...] [--force]");
   process.exit(1);
 }
 
@@ -61,12 +66,18 @@ const YT_CATEGORY_MAP = {
   10: "Music",
 };
 
-const CHAT_MODELS = ["llama-3.3-70b-versatile", "openai/gpt-oss-20b", "llama-3.1-8b-instant"];
+// Refreshed 2026-09: Groq retired the llama-3.x chat IDs (HTTP 404).
+// Verified live via GET /models; first model that answers wins.
+const CHAT_MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"];
 
+// One video's full pipeline. Console output per video is unchanged (the
+// relay parses these lines), failures are returned — never process.exit —
+// so batch mode can skip and continue.
+async function ingestOne(url) {
 const youtubeId = extractYouTubeId(url);
 if (!youtubeId) {
   console.error("Could not parse a YouTube video ID from that URL.");
-  process.exit(1);
+  return { status: "failed", detail: "Could not parse a YouTube video ID from that URL." };
 }
 
 const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
@@ -77,13 +88,13 @@ if (existing) {
   const { count } = await sb.from("transcript_words").select("id", { count: "exact", head: true }).eq("video_id", existing.id);
   if ((count ?? 0) > 0 && !force) {
     console.log(`Already ingested with transcript: ${existing.id}`);
-    process.exit(0);
+    return { status: "skipped", detail: `Already ingested with transcript: ${existing.id}`, id: existing.id };
   }
   console.log(`Reprocessing ${existing.id} (${force ? "--force" : "hollow row"})…`);
   const { error: delErr } = await sb.from("videos").delete().eq("id", existing.id);
   if (delErr) {
     console.error(`Delete failed: ${delErr.message}`);
-    process.exit(1);
+    return { status: "failed", detail: `Delete failed: ${delErr.message}` };
   }
 }
 
@@ -92,13 +103,14 @@ const metaRes = await fetch(
   `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=${youtubeId}&key=${YOUTUBE_API_KEY}`,
 );
 if (!metaRes.ok) {
-  console.error(`YouTube API error (HTTP ${metaRes.status}). Check YOUTUBE_API_KEY / quota.`);
-  process.exit(1);
+  const detail = `YouTube API error (HTTP ${metaRes.status}). Check YOUTUBE_API_KEY / quota.`;
+  console.error(detail);
+  return { status: "failed", detail };
 }
 const item = (await metaRes.json()).items?.[0];
 if (!item) {
   console.error("Video not found (private, deleted, or bad ID).");
-  process.exit(1);
+  return { status: "failed", detail: "Video not found (private, deleted, or bad ID)." };
 }
 const sn = item.snippet ?? {};
 const thumbs = sn.thumbnails ?? {};
@@ -111,9 +123,28 @@ console.log(`metadata ok: "${sn.title}" (${durationSec}s, ${category})`);
 
 // 2. Captions via yt-dlp (subtitle track URLs straight from the info JSON —
 // no files written). Manual English preferred, auto-generated second.
+const binPath = youtubedl?.constants?.YOUTUBE_DL_PATH ?? "node_modules/youtube-dl-exec/bin/yt-dlp(.exe)";
+if (!existsSync(String(binPath))) {
+  console.error(
+    `yt-dlp binary not found at ${binPath}. Reinstall it with: node node_modules/youtube-dl-exec/scripts/postinstall.js ` +
+      `(set GITHUB_TOKEN first if you hit GitHub API rate limits).`,
+  );
+}
+// Non-speech tokens: [music], [applause], (laughter), ♪, etc. In caption
+// tracks these are near-always sound effects, never spoken content.
+const SFX_RE = /^\[.*\]$|^\(.*\)$|^♪+$/;
+function cleanSegText(raw) {
+  // YouTube prefixes speaker-change lines with ">>" (" >> [music]").
+  const text = String(raw ?? "").replace(/\s+/g, " ").trim().replace(/^>>\s*/, "");
+  if (!text || text === "\n" || text === ">>" || SFX_RE.test(text)) return "";
+  return text;
+}
+
 let words = [];
+let ytInfo = null; // full info JSON, reused for frame extraction
 try {
   const info = await youtubedl(url, { dumpSingleJson: true, noWarnings: true });
+  ytInfo = info;
   const pick = (groups) => {
     for (const g of groups) {
       if (!g) continue;
@@ -140,25 +171,136 @@ try {
       console.error(`caption download HTTP ${capRes.status}`);
     } else {
       const j = await capRes.json();
-      for (const ev of j.events ?? []) {
-        if (!ev.segs) continue;
-        for (const seg of ev.segs) {
-          const text = seg.utf8 ?? "";
-          if (!text || text === "\n") continue;
-          const start = ((ev.tStartMs ?? 0) + (seg.tStartMs ?? 0)) / 1000;
-          words.push({ text, startTime: start, endTime: start + (seg.dDurationMs ?? 0) / 1000 });
+      const events = (j.events ?? []).filter((ev) => ev.segs?.length);
+      events.forEach((ev, ei) => {
+        const evStart = (ev.tStartMs ?? 0) / 1000;
+        // Event span: its own duration, else the gap to the next event,
+        // else a 2s fallback. Auto-caption segs carry no per-seg timings,
+        // so each seg gets an even slice — preserving spoken order with
+        // distinct start/end times (click-to-seek + highlight need these).
+        let span = (ev.dDurationMs ?? 0) / 1000;
+        if (!span || !Number.isFinite(span)) {
+          const next = events.slice(ei + 1).find((e) => (e.tStartMs ?? 0) / 1000 > evStart);
+          span = next ? (next.tStartMs / 1000 - evStart) : 2;
+          if (!span || span <= 0 || !Number.isFinite(span)) span = 2;
         }
-      }
+        const kept = ev.segs
+          .map((seg) => ({ text: cleanSegText(seg.utf8), seg }))
+          .filter((k) => k.text);
+        const slice = span / Math.max(kept.length, 1);
+        kept.forEach(({ text, seg }, si) => {
+          const hasOwn = seg && Number.isFinite(seg.tStartMs) && Number.isFinite(seg.dDurationMs);
+          if (hasOwn) {
+            // Manual captions: trust the precise per-seg timings.
+            const start = ((ev.tStartMs ?? 0) + seg.tStartMs) / 1000;
+            words.push({ text, startTime: start, endTime: start + seg.dDurationMs / 1000 });
+          } else {
+            words.push({
+              text,
+              startTime: evStart + si * slice,
+              endTime: evStart + (si + 1) * slice,
+            });
+          }
+        });
+      });
     }
   }
 } catch (e) {
-  console.error("yt-dlp failed:", e.message ?? e);
+  // youtube-dl-exec throws Error(stderr); a failed spawn (missing binary)
+  // has empty stderr, so log every available field — never a blank line.
+  console.error("yt-dlp failed:", e?.shortMessage ?? e?.stderr ?? e?.message ?? e);
+  if (e?.exitCode !== undefined) console.error(`yt-dlp exitCode: ${e.exitCode}`);
+  if (e?.stderr) console.error(`yt-dlp stderr: ${String(e.stderr).slice(0, 2000)}`);
+  if (e?.stdout) console.error(`yt-dlp stdout: ${String(e.stdout).slice(0, 2000)}`);
+  if (e?.code === "ENOENT" || (!e?.stderr && !e?.message)) {
+    console.error(
+      "Hint: yt-dlp binary missing or un-runnable? Run: node node_modules/youtube-dl-exec/scripts/postinstall.js " +
+        "(set GITHUB_TOKEN if rate-limited), then: yt-dlp.exe --version. " +
+        "If YouTube blocks with 'Sign in to confirm', run yt-dlp -U and retry with --extractor-args youtube:player_client=android,web.",
+    );
+  }
+}
+// Whisper via Groq on yt-dlp-downloaded audio. Only reached when the video
+// has no caption tracks at all (uploaders can disable them). Worst-quality
+// MP3 keeps uploads far under Groq's 25 MB cap (452s ≈ 2-4 MB).
+async function transcribeWithWhisper(youtubeUrl, durationSec) {
+  const out = [];
+  if (durationSec > 1800) {
+    console.error("whisper skipped: video over 30 min");
+    return out;
+  }
+  const tmp = join(tmpdir(), `ingest-${youtubeId}-${Date.now()}.mp3`);
+  try {
+    await youtubedl(youtubeUrl, {
+      extractAudio: true,
+      audioFormat: "mp3",
+      audioQuality: 9,
+      output: tmp,
+      noWarnings: true,
+    });
+    let size = 0;
+    try {
+      size = statSync(tmp).size;
+    } catch {
+      console.error("whisper skipped: audio download produced no file (ffmpeg missing?)");
+      return out;
+    }
+    console.log(`whisper audio: ${(size / 1024 / 1024).toFixed(1)} MB`);
+    if (size > 24 * 1024 * 1024) {
+      console.error("whisper skipped: audio over Groq's 25 MB upload cap");
+      return out;
+    }
+    const audioBytes = readFileSync(tmp);
+    for (const model of ["whisper-large-v3-turbo", "whisper-large-v3"]) {
+      try {
+        const form = new FormData();
+        form.append("file", new Blob([audioBytes], { type: "audio/mpeg" }), "audio.mp3");
+        form.append("model", model);
+        form.append("response_format", "verbose_json");
+        form.append("timestamp_granularities[]", "word");
+        const tr = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${GROQ_API_KEY}` },
+          body: form,
+        });
+        if (!tr.ok) {
+          console.error(`groq whisper ${model} HTTP ${tr.status}`);
+          continue;
+        }
+        const j = await tr.json();
+        for (const w of j.words ?? []) {
+          const text = cleanSegText(w.word);
+          if (text) out.push({ text, startTime: Number(w.start ?? 0), endTime: Number(w.end ?? 0) });
+        }
+        if (out.length) {
+          console.log(`whisper ok via ${model}: ${out.length} words`);
+          break;
+        }
+      } catch (e) {
+        console.error(`groq whisper ${model} failed:`, e.message ?? e);
+      }
+    }
+  } catch (e) {
+    console.error("whisper audio download failed:", e?.stderr ?? e?.message ?? e);
+  } finally {
+    try {
+      unlinkSync(tmp);
+    } catch {}
+  }
+  return out;
+}
+
+let transcriptSource = "captions";
+if (!words.length) {
+  console.error("No captions — trying Whisper fallback (audio + Groq)…");
+  words = await transcribeWithWhisper(url, durationSec);
+  if (words.length) transcriptSource = "whisper";
 }
 if (!words.length) {
   console.error("No transcript obtained — aborting (not writing a hollow row).");
-  process.exit(1);
+  return { status: "failed", detail: "No transcript obtained — aborting (not writing a hollow row)." };
 }
-console.log(`captions ok: ${words.length} words`);
+console.log(`transcript ok: ${words.length} words (source=${transcriptSource})`);
 const transcriptText = words.map((w) => w.text).join(" ").replace(/\s+/g, " ").trim();
 
 // 3. Summary / takeaways / chapters (first model that answers wins).
@@ -207,7 +349,25 @@ for (const model of CHAT_MODELS) {
 }
 if (!ai) {
   console.error("All Groq models failed — aborting.");
-  process.exit(1);
+  return { status: "failed", detail: "All Groq models failed — aborting." };
+}
+
+// 3b. Chapter frames (best-effort; a failed image never fails the ingest).
+// Real video frames via yt-dlp stream URL + ffmpeg, uploaded to Supabase.
+let frameInfos = ai.chapters.map(() => null);
+try {
+  const { tmpdir } = await import("node:os");
+  const { extractChapterFrames } = await import("./frames.mjs");
+  frameInfos = await extractChapterFrames(
+    sb,
+    SUPABASE_URL,
+    youtubeId,
+    ytInfo,
+    ai.chapters.map((c) => c.startTime),
+    tmpdir(),
+  );
+} catch (e) {
+  console.error("chapter frames skipped:", e.message ?? e);
 }
 
 // 4. Write (service role bypasses RLS).
@@ -229,20 +389,61 @@ const { data: videoRow, error: vErr } = await sb
   .select("id")
   .single();
 if (vErr || !videoRow) {
-  console.error(`Database write failed: ${vErr?.message ?? "unknown"}`);
-  process.exit(1);
+  const detail = `Database write failed: ${vErr?.message ?? "unknown"}`;
+  console.error(detail);
+  return { status: "failed", detail };
 }
 if (ai.chapters.length) {
-  await sb.from("chapters").insert(
-    ai.chapters.map((c) => ({ video_id: videoRow.id, title: c.title, start_time: c.startTime, description: c.description })),
+  const { error: cErr } = await sb.from("chapters").insert(
+    ai.chapters.map((c, i) => ({
+      video_id: videoRow.id,
+      title: c.title,
+      start_time: c.startTime,
+      description: c.description,
+      image_url: frameInfos[i]?.imageUrl ?? null,
+      frame_time: frameInfos[i]?.frameTime ?? null,
+    })),
   );
+  if (cErr) {
+    // Older DBs may lack the image columns (migration not run) — retry bare.
+    console.error(`chapter write with images failed (${cErr.message}); retrying without…`);
+    await sb.from("chapters").insert(
+      ai.chapters.map((c) => ({ video_id: videoRow.id, title: c.title, start_time: c.startTime, description: c.description })),
+    );
+  }
 }
 const wordRows = words.map((w) => ({ video_id: videoRow.id, text: w.text, start_time: w.startTime, end_time: w.endTime }));
 for (let i = 0; i < wordRows.length; i += 1000) {
   const { error: wErr } = await sb.from("transcript_words").insert(wordRows.slice(i, i + 1000));
   if (wErr) {
-    console.error(`Transcript write failed: ${wErr.message} (video id: ${videoRow.id})`);
-    process.exit(1);
+    const detail = `Transcript write failed: ${wErr.message} (video id: ${videoRow.id})`;
+    console.error(detail);
+    return { status: "failed", detail };
   }
 }
-console.log(`done: ${videoRow.id} (${wordRows.length} words, ${ai.chapters.length} chapters)`);
+const frameCount = frameInfos.filter(Boolean).length;
+console.log(`done: ${videoRow.id} (${wordRows.length} words, ${ai.chapters.length} chapters, ${frameCount} frames, source=${transcriptSource})`);
+return { status: "ok", id: videoRow.id };
+}
+
+// Batch driver: sequential, skip-and-continue. Single-URL runs behave
+// exactly as before (same lines, exit 0/1).
+const results = [];
+for (let i = 0; i < urls.length; i++) {
+  if (urls.length > 1) console.log(`=== [${i + 1}/${urls.length}] ${urls[i]} ===`);
+  try {
+    results.push({ url: urls[i], ...(await ingestOne(urls[i])) });
+  } catch (e) {
+    const detail = String(e?.message ?? e);
+    console.error(`failed: ${detail}`);
+    results.push({ url: urls[i], status: "failed", detail });
+  }
+}
+if (urls.length > 1) {
+  const n = (s) => results.filter((r) => r.status === s).length;
+  console.log(`batch: ${n("ok")} ok, ${n("skipped")} skipped, ${n("failed")} failed`);
+  for (const r of results.filter((r) => r.status === "failed")) {
+    console.log(`FAILED ${r.url}: ${r.detail}`);
+  }
+  if (n("failed") > 0) process.exit(1);
+}

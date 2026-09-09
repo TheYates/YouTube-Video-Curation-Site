@@ -191,8 +191,18 @@ function pickTrack(tracks: CaptionTrack[]): CaptionTrack | null {
   )
 }
 
-// Manual captions preferred, auto (kind=asr) second. The json3 format
-// carries per-word timings.
+// Non-speech tokens: [music], [applause], (laughter), ♪, etc.
+const SFX_RE = /^\[.*\]$|^\(.*\)$|^♪+$/
+function cleanSegText(raw: unknown): string {
+  // YouTube prefixes speaker-change lines with ">>" (" >> [music]").
+  const text = String(raw ?? "").replace(/\s+/g, " ").trim().replace(/^>>\s*/, "")
+  if (!text || text === "\n" || text === ">>" || SFX_RE.test(text)) return ""
+  return text
+}
+
+// Manual captions preferred, auto (kind=asr) second. Manual json3 segs carry
+// per-seg timings; auto-caption segs don't, so each seg gets an even slice
+// of its event span — preserving spoken order with distinct start/end times.
 async function wordsFromTracks(tracks: CaptionTrack[]): Promise<TimedWord[] | null> {
   const track = pickTrack(tracks)
   if (!track) return null
@@ -206,19 +216,37 @@ async function wordsFromTracks(tracks: CaptionTrack[]): Promise<TimedWord[] | nu
     }
     const j = await capRes.json()
     const words: TimedWord[] = []
-    for (const ev of j.events ?? []) {
-      if (!ev.segs) continue
-      for (const seg of ev.segs) {
-        const text: string = seg.utf8 ?? ""
-        if (!text || text === "\n") continue
-        const start = ((ev.tStartMs ?? 0) + (seg.tStartMs ?? 0)) / 1000
-        words.push({
-          text,
-          startTime: start,
-          endTime: start + (seg.dDurationMs ?? 0) / 1000,
-        })
+    const events = ((j.events ?? []) as Array<{
+      tStartMs?: number
+      dDurationMs?: number
+      segs?: Array<{ utf8?: string; tStartMs?: number; dDurationMs?: number }>
+    }>).filter((ev) => ev.segs?.length)
+    events.forEach((ev, ei) => {
+      const evStart = (ev.tStartMs ?? 0) / 1000
+      let span = (ev.dDurationMs ?? 0) / 1000
+      if (!span || !Number.isFinite(span)) {
+        const next = events.slice(ei + 1).find((e) => (e.tStartMs ?? 0) / 1000 > evStart)
+        span = next ? next.tStartMs! / 1000 - evStart : 2
+        if (!span || span <= 0 || !Number.isFinite(span)) span = 2
       }
-    }
+      const kept = (ev.segs ?? [])
+        .map((seg) => ({ text: cleanSegText(seg.utf8), seg }))
+        .filter((k) => k.text)
+      const slice = span / Math.max(kept.length, 1)
+      kept.forEach(({ text, seg }, si) => {
+        const hasOwn = Number.isFinite(seg.tStartMs) && Number.isFinite(seg.dDurationMs)
+        if (hasOwn) {
+          const start = ((ev.tStartMs ?? 0) + seg.tStartMs!) / 1000
+          words.push({ text, startTime: start, endTime: start + seg.dDurationMs! / 1000 })
+        } else {
+          words.push({
+            text,
+            startTime: evStart + si * slice,
+            endTime: evStart + (si + 1) * slice,
+          })
+        }
+      })
+    })
     return words.length ? words : null
   } catch (e) {
     console.error("[ingest] timedtext fetch/parse failed:", e)
@@ -295,7 +323,9 @@ async function transcribeWithWhisper(
           word: string
           start: number
           end: number
-        }>).map((w) => ({ text: w.word, startTime: w.start, endTime: w.end }))
+        }>)
+          .map((w) => ({ text: cleanSegText(w.word), startTime: w.start, endTime: w.end }))
+          .filter((w) => w.text)
         if (words.length) return words
       } catch (e) {
         console.error(`[ingest] groq whisper ${model} failed:`, e)
@@ -332,7 +362,9 @@ async function summarize(
     `${transcriptText.slice(0, 12000)}\n\nReturn JSON: { "summary": "2-3 sentence editorial summary", ` +
     `"takeaways": ["4-5 crisp bullets"], "chapters": [{ "title": "...", "startTime": <seconds>, ` +
     `"description": "..." }] } with 3-5 chapters spread across the video.`
-  for (const model of ["llama-3.3-70b-versatile", "openai/gpt-oss-20b", "llama-3.1-8b-instant"]) {
+  // Refreshed 2026-09: Groq retired the llama-3.x chat IDs (HTTP 404).
+  // Verified live via GET /models; first model that answers wins.
+  for (const model of ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"]) {
     try {
       const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
@@ -468,7 +500,19 @@ Deno.serve(async (req) => {
       transcriptSource = "whisper"
       console.log(`[ingest] whisper ok: ${words.length} words`)
     } else {
-      console.error("[ingest] no transcript at all — publishing hollow row")
+      // No hollow rows: the curator's machine (local relay / CLI script)
+      // can fetch captions from a residential IP where datacenter IPs fail.
+      console.error("[ingest] no transcript at all — aborting (not writing a hollow row)")
+      return json(
+        {
+          error:
+            "No transcript obtained — YouTube blocked this server's network (youtubei 403 / watch 429). " +
+            "Use the local ingest relay (npm run ingest:serve) or node scripts/ingest.mjs from your machine.",
+          transcriptSource: "none",
+          aiOk: false,
+        },
+        422,
+      )
     }
   }
   const transcriptText = (words ?? [])

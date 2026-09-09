@@ -30,18 +30,28 @@ export default function ChapterList({ chapters, currentTime, onSeek }: Props) {
                 isActive ? "bg-[var(--color-muted)]" : "hover:bg-[var(--color-muted)]/50",
               ].join(" ")}
             >
-              <div className="flex items-baseline gap-3">
-                <span className="font-mono text-xs tabular-nums text-[var(--color-accent)]">
-                  {formatTime(ch.startTime)}
-                </span>
-                <span
-                  className={[
-                    "text-sm font-medium",
-                    isActive ? "text-[var(--color-foreground)]" : "text-[var(--color-muted-foreground)]",
-                  ].join(" ")}
-                >
-                  {ch.title}
-                </span>
+              <div className="flex items-center gap-3">
+                {ch.imageUrl && (
+                  <img
+                    src={ch.imageUrl}
+                    alt=""
+                    loading="lazy"
+                    className="aspect-video w-16 shrink-0 rounded-sm bg-[var(--color-muted)] object-cover"
+                  />
+                )}
+                <div className="flex min-w-0 items-baseline gap-3">
+                  <span className="shrink-0 font-mono text-xs tabular-nums text-[var(--color-accent)]">
+                    {formatTime(ch.startTime)}
+                  </span>
+                  <span
+                    className={[
+                      "truncate text-sm font-medium",
+                      isActive ? "text-[var(--color-foreground)]" : "text-[var(--color-muted-foreground)]",
+                    ].join(" ")}
+                  >
+                    {ch.title}
+                  </span>
+                </div>
               </div>
               <p className="mt-0.5 pl-12 text-xs text-[var(--color-muted-foreground)] line-clamp-1">
                 {ch.description}

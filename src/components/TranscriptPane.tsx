@@ -1,9 +1,14 @@
-import { useEffect, useRef } from "react"
-import type { TranscriptWord } from "../data/types"
+import { Fragment, useEffect, useRef } from "react"
+import type { Chapter, TranscriptWord } from "../data/types"
+import { groupParagraphs } from "../lib/transcript"
 
 interface Props {
   transcript: TranscriptWord[]
+  chapters?: Chapter[]
   currentTime: number
+  // True once the player has started (playing or paused). Gates the active
+  // highlight + read dimming so the first word isn't lit up on page load.
+  isActive: boolean
   onWordClick: (startTime: number) => void
 }
 
@@ -13,12 +18,14 @@ function formatTime(seconds: number) {
   return `${m}:${String(s).padStart(2, "0")}`
 }
 
-export default function TranscriptPane({ transcript, currentTime, onWordClick }: Props) {
+export default function TranscriptPane({ transcript, chapters = [], currentTime, isActive, onWordClick }: Props) {
   const activeRef = useRef<HTMLButtonElement | null>(null)
 
-  const activeIdx = transcript.findIndex(
-    (w) => currentTime >= w.startTime && currentTime < w.endTime
-  )
+  const activeIdx = isActive
+    ? transcript.findIndex(
+        (w) => currentTime >= w.startTime && currentTime < w.endTime
+      )
+    : -1
 
   useEffect(() => {
     if (activeRef.current) {
@@ -26,16 +33,25 @@ export default function TranscriptPane({ transcript, currentTime, onWordClick }:
     }
   }, [activeIdx])
 
-  // Group words into paragraph-like chunks by gap in timing (> 3s gap = new paragraph)
-  const paragraphs: TranscriptWord[][] = []
-  let current: TranscriptWord[] = []
-  for (let i = 0; i < transcript.length; i++) {
-    current.push(transcript[i])
-    const next = transcript[i + 1]
-    if (!next || next.startTime - transcript[i].endTime > 3) {
-      paragraphs.push(current)
-      current = []
+  // Paragraph boundaries snap forward to sentence ends (see lib/transcript),
+  // so a paragraph never starts with a continuation like "else."
+  const paragraphs = groupParagraphs(transcript)
+
+  // Chapter figures lead the paragraph containing their start time.
+  const paraStarts = paragraphs.map((p) => p[0].startTime)
+  const figuresByPara = new Map<number, Chapter[]>()
+  for (const ch of chapters) {
+    if (!ch.imageUrl) continue
+    let pi = paraStarts.length - 1
+    for (let k = 0; k < paraStarts.length; k++) {
+      if (ch.startTime < paraStarts[k]) {
+        pi = Math.max(0, k - 1)
+        break
+      }
     }
+    const list = figuresByPara.get(pi) ?? []
+    list.push(ch)
+    figuresByPara.set(pi, list)
   }
 
   let wordIndex = 0
@@ -45,7 +61,27 @@ export default function TranscriptPane({ transcript, currentTime, onWordClick }:
       {paragraphs.map((para, pi) => {
         const paraStart = para[0].startTime
         return (
-          <div key={pi} className="group relative">
+          <Fragment key={pi}>
+          {(figuresByPara.get(pi) ?? []).map((ch, fi) => {
+            const t = ch.frameTime ?? ch.startTime
+            return (
+              <figure key={fi} className="overflow-hidden rounded-sm border border-[var(--color-border)]">
+                <button onClick={() => onWordClick(t)} className="block w-full cursor-pointer" title={`Play from ${formatTime(t)} — ${ch.title}`}>
+                  <img
+                    src={ch.imageUrl ?? ""}
+                    alt={`Video still: ${ch.title}`}
+                    loading="lazy"
+                    className="aspect-video w-full bg-[var(--color-muted)] object-cover"
+                  />
+                </button>
+                <figcaption className="flex items-baseline gap-2 px-3 py-2">
+                  <span className="font-mono text-xs tabular-nums text-[var(--color-accent)]">{formatTime(t)}</span>
+                  <span className="truncate text-sm text-[var(--color-muted-foreground)]">{ch.title}</span>
+                </figcaption>
+              </figure>
+            )
+          })}
+          <div className="group relative">
             <button
               onClick={() => onWordClick(paraStart)}
               className="absolute -left-10 top-1 hidden font-mono text-xs text-[var(--color-muted-foreground)] opacity-0 transition-opacity group-hover:opacity-100 sm:block"
@@ -56,18 +92,18 @@ export default function TranscriptPane({ transcript, currentTime, onWordClick }:
             <p className="inline">
               {para.map((word) => {
                 const idx = wordIndex++
-                const isActive = idx === activeIdx
+                const isCurrent = idx === activeIdx
                 return (
                   <button
                     key={idx}
-                    ref={isActive ? activeRef : null}
+                    ref={isCurrent ? activeRef : null}
                     onClick={() => onWordClick(word.startTime)}
                     className={[
                       "rounded-sm px-0.5 py-0.5 font-sans text-base leading-8 transition-all cursor-pointer",
-                      isActive
+                      isCurrent
                         ? "bg-[var(--color-accent)] text-[var(--color-accent-foreground)]"
                         : "hover:bg-[var(--color-muted)] hover:text-[var(--color-foreground)]",
-                      !isActive && currentTime > word.endTime
+                      !isCurrent && isActive && currentTime > word.endTime
                         ? "text-[var(--color-muted-foreground)]"
                         : "text-[var(--color-foreground)]",
                     ].join(" ")}
@@ -78,6 +114,7 @@ export default function TranscriptPane({ transcript, currentTime, onWordClick }:
               })}
             </p>
           </div>
+          </Fragment>
         )
       })}
     </div>

@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
+import { toast } from "sonner"
 import { useVideos, useCategories } from "../../hooks/useVideos"
 
 function formatDuration(s: number) {
@@ -39,6 +40,7 @@ export default function AdminVideos() {
   function handleDelete(id: string) {
     setRemovedIds((prev) => new Set(prev).add(id))
     setConfirmDelete(null)
+    toast.success("Video removed from the list")
   }
 
   if (isPending) {

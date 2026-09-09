@@ -1,7 +1,16 @@
 import { useState, useEffect } from "react"
 import { useParams, Navigate, Link } from "react-router-dom"
+import { toast } from "sonner"
 import { useVideo, useCategories } from "../../hooks/useVideos"
 import type { AffiliateLink } from "../../data/types"
+
+const RELAY_URL = import.meta.env.VITE_INGEST_RELAY_URL ?? "http://127.0.0.1:8917"
+
+function formatTime(seconds: number) {
+  const m = Math.floor(seconds / 60)
+  const s = Math.floor(seconds % 60)
+  return `${m}:${String(s).padStart(2, "0")}`
+}
 
 function InputField({ label, value, onChange, type = "text", rows }: {
   label: string
@@ -54,7 +63,11 @@ export default function AdminVideoEdit() {
   const [summary, setSummary] = useState("")
   const [takeaways, setTakeaways] = useState<string[]>([])
   const [affiliateLinks, setAffiliateLinks] = useState<AffiliateLink[]>([])
-  const [saved, setSaved] = useState(false)
+  // Chapter frame curation: per-chapter timestamp nudge → relay re-captures
+  // the still from the video and updates the row (preview updates instantly).
+  const [frameTimes, setFrameTimes] = useState<Record<number, string>>({})
+  const [frameUrls, setFrameUrls] = useState<Record<number, string>>({})
+  const [frameBusy, setFrameBusy] = useState<Record<number, boolean>>({})
 
   useEffect(() => {
     if (!video) return
@@ -76,8 +89,7 @@ export default function AdminVideoEdit() {
   const tags = tagsInput.split(",").map((t) => t.trim()).filter(Boolean)
 
   function handleSave() {
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2500)
+    toast.success("Changes saved")
   }
 
   function updateTakeaway(i: number, val: string) {
@@ -85,6 +97,33 @@ export default function AdminVideoEdit() {
   }
   function removeTakeaway(i: number) {
     setTakeaways((prev) => prev.filter((_, idx) => idx !== i))
+  }
+
+  async function regenerateFrame(chapterIndex: number) {
+    if (!video) return
+    const raw = frameTimes[chapterIndex] ?? String(video.chapters[chapterIndex]?.frameTime ?? video.chapters[chapterIndex]?.startTime ?? 0)
+    const timestamp = Number(raw)
+    if (!Number.isFinite(timestamp) || timestamp < 0) {
+      toast.error("Frame time must be a number of seconds >= 0.")
+      return
+    }
+    setFrameBusy((prev) => ({ ...prev, [chapterIndex]: true }))
+    try {
+      const res = await fetch(`${RELAY_URL}/chapter-frame`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ youtubeId: video.youtubeId, chapterIndex, timestamp }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.error ?? `Frame capture failed (HTTP ${res.status})`)
+      setFrameUrls((prev) => ({ ...prev, [chapterIndex]: body.imageUrl }))
+      setFrameTimes((prev) => ({ ...prev, [chapterIndex]: String(body.frameTime) }))
+      toast.success(`Frame updated at ${body.frameTime}s`)
+    } catch (e) {
+      toast.error(e instanceof Error ? `${e.message} — is the relay running (npm run ingest:serve)?` : "Frame capture failed.")
+    } finally {
+      setFrameBusy((prev) => ({ ...prev, [chapterIndex]: false }))
+    }
   }
 
   function updateLink(i: number, field: keyof AffiliateLink, val: string) {
@@ -243,6 +282,67 @@ export default function AdminVideoEdit() {
           </button>
         </div>
 
+        {/* Chapter frames */}
+        {video.chapters.length > 0 && (
+          <div>
+            <label className="mb-3 block font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--color-muted-foreground)" }}>
+              Chapter Frames
+            </label>
+            <p className="mb-3 text-xs leading-relaxed" style={{ color: "var(--color-muted-foreground)" }}>
+              Stills auto-captured at each chapter start. Nudge the timestamp and regenerate to pick a better frame.
+              Requires the local relay (<code className="font-mono">npm run ingest:serve</code>).
+            </p>
+            <div className="space-y-3">
+              {video.chapters.map((ch, i) => {
+                const img = frameUrls[i] ?? ch.imageUrl ?? null
+                const t = frameTimes[i] ?? String(ch.frameTime ?? ch.startTime)
+                return (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 rounded-sm border p-3"
+                    style={{ borderColor: "var(--color-border)" }}
+                  >
+                    {img ? (
+                      <img src={img} alt="" className="aspect-video w-24 shrink-0 rounded-sm bg-[var(--color-muted)] object-cover" />
+                    ) : (
+                      <div
+                        className="flex aspect-video w-24 shrink-0 items-center justify-center rounded-sm font-mono text-[10px]"
+                        style={{ background: "var(--color-muted)", color: "var(--color-muted-foreground)" }}
+                      >
+                        no frame
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium" style={{ color: "var(--color-foreground)" }}>{ch.title}</p>
+                      <p className="font-mono text-xs tabular-nums" style={{ color: "var(--color-muted-foreground)" }}>
+                        chapter at {formatTime(ch.startTime)}
+                      </p>
+                    </div>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={t}
+                      onChange={(e) => setFrameTimes((prev) => ({ ...prev, [i]: e.target.value }))}
+                      title="Frame timestamp (seconds)"
+                      className="w-20 rounded-sm border px-2 py-1.5 text-sm outline-none transition-colors focus:border-[var(--color-accent)]"
+                      style={inputBase}
+                    />
+                    <button
+                      onClick={() => regenerateFrame(i)}
+                      disabled={frameBusy[i]}
+                      className="rounded-sm px-3 py-1.5 font-mono text-xs uppercase tracking-wide transition-opacity hover:opacity-80 disabled:opacity-40"
+                      style={{ background: "var(--color-accent)", color: "var(--color-accent-foreground)" }}
+                    >
+                      {frameBusy[i] ? "…" : "Refresh"}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex items-center gap-4 pt-2 border-t" style={{ borderColor: "var(--color-border)" }}>
           <button
@@ -252,11 +352,6 @@ export default function AdminVideoEdit() {
           >
             Save Changes
           </button>
-          {saved && (
-            <span className="font-mono text-xs" style={{ color: "var(--color-accent)" }}>
-              Saved.
-            </span>
-          )}
           <Link
             to="/admin/videos"
             className="ml-auto font-mono text-xs uppercase tracking-wide transition-colors hover:text-[var(--color-foreground)]"

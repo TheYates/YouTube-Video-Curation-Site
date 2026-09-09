@@ -1,12 +1,13 @@
 import { useState, useEffect, useId, useRef } from "react"
 import { useParams, useSearchParams, Link, Navigate } from "react-router-dom"
-import { useVideo, useRelatedVideos } from "../hooks/useVideos"
+import { useVideo, useRelatedVideos, logPageView } from "../hooks/useVideos"
 import { useYouTubePlayer } from "../hooks/useYouTubePlayer"
 import TranscriptPane from "../components/TranscriptPane"
 import ChapterList from "../components/ChapterList"
 import SummaryPanel from "../components/SummaryPanel"
 import ShareBar from "../components/ShareBar"
 import EmailCapture from "../components/EmailCapture"
+import { NEWSLETTER_ENABLED } from "../lib/env"
 import AdSlot from "../components/AdSlot"
 import RelatedVideos from "../components/RelatedVideos"
 import type { Video } from "../data/types"
@@ -26,6 +27,11 @@ function VideoDetail({ video, tParam }: { video: Video; tParam: number }) {
     video.youtubeId,
     playerContainerId
   )
+
+  // Real view tracking: one beacon per video per browser session.
+  useEffect(() => {
+    logPageView(video.id)
+  }, [video.id])
 
   useEffect(() => {
     if (isReady && pendingSeekRef.current !== null) {
@@ -168,7 +174,7 @@ function VideoDetail({ video, tParam }: { video: Video; tParam: number }) {
         <div className="order-last space-y-12 lg:order-first">
           <SummaryPanel summary={video.summary} takeaways={video.takeaways} affiliateLinks={video.affiliateLinks} />
 
-          <EmailCapture variant="inline" />
+          {NEWSLETTER_ENABLED && <EmailCapture variant="inline" />}
 
           <div>
             <h3 className="mb-6 font-mono text-xs uppercase tracking-widest text-[var(--color-accent)]">
@@ -180,7 +186,9 @@ function VideoDetail({ video, tParam }: { video: Video; tParam: number }) {
             <div className="relative pl-0 sm:pl-10">
               <TranscriptPane
                 transcript={video.transcript}
+                chapters={video.chapters}
                 currentTime={currentTime}
+                isActive={isActive}
                 onWordClick={handleWordClick}
               />
             </div>

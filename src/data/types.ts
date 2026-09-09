@@ -8,6 +8,8 @@ export interface Chapter {
   title: string
   startTime: number
   description: string
+  imageUrl?: string | null
+  frameTime?: number | null
 }
 
 export interface AffiliateLink {

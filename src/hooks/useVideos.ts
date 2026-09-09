@@ -10,6 +10,8 @@ interface ChapterRow {
   title: string
   start_time: number
   description: string | null
+  image_url: string | null
+  frame_time: number | null
 }
 
 interface WordRow {
@@ -57,6 +59,8 @@ function mapRowToVideo(row: VideoRow): Video {
       title: c.title,
       startTime: Number(c.start_time),
       description: c.description ?? "",
+      imageUrl: c.image_url ?? null,
+      frameTime: c.frame_time != null ? Number(c.frame_time) : null,
     })),
     transcript: (row.transcript_words ?? []).map((w) => ({
       text: w.text,
@@ -86,6 +90,7 @@ async function fetchTranscriptWords(sb: SupabaseClient, videoId: string): Promis
       .select("text,start_time,end_time")
       .eq("video_id", videoId)
       .order("start_time")
+      .order("id")
       .range(from, from + PAGE - 1)
     if (error) throw error
     const rows = (data ?? []) as WordRow[]
@@ -239,4 +244,83 @@ export function useCategories() {
     queryKey: ["categories"],
     queryFn: fetchCategories,
   })
+}
+
+// ── Page-view analytics (real view tracking; see migration 20260908) ──
+
+export interface PageViewStats {
+  viewsByVideo: Record<string, number>
+  totalViews: number
+  viewsLast30d: number
+  // False when the page_views table doesn't exist yet (migration not run)
+  // or Supabase isn't configured — callers show zeroed stats + setup hint.
+  trackingLive: boolean
+}
+
+const EMPTY_STATS: PageViewStats = {
+  viewsByVideo: {},
+  totalViews: 0,
+  viewsLast30d: 0,
+  trackingLive: false,
+}
+
+async function fetchPageViews(): Promise<PageViewStats> {
+  const sb = getSupabase()
+  if (!sb) {
+    warnNoClient()
+    return EMPTY_STATS
+  }
+  try {
+    const PAGE = 1000
+    const viewsByVideo: Record<string, number> = {}
+    let totalViews = 0
+    let viewsLast30d = 0
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await sb
+        .from("page_views")
+        .select("video_id,viewed_at")
+        .order("viewed_at")
+        .range(from, from + PAGE - 1)
+      if (error) throw error
+      const rows = (data ?? []) as { video_id: string; viewed_at: string }[]
+      for (const r of rows) {
+        viewsByVideo[r.video_id] = (viewsByVideo[r.video_id] ?? 0) + 1
+        totalViews++
+        if (new Date(r.viewed_at).getTime() >= cutoff) viewsLast30d++
+      }
+      if (rows.length < PAGE) break
+    }
+    return { viewsByVideo, totalViews, viewsLast30d, trackingLive: true }
+  } catch {
+    // Table missing (migration not run) or RLS — zeroed stats, hint shown.
+    return EMPTY_STATS
+  }
+}
+
+export function usePageViews() {
+  return useQuery({
+    queryKey: ["page-views"],
+    queryFn: fetchPageViews,
+    staleTime: 60_000,
+  })
+}
+
+// Fire-and-forget view beacon: one row per video per browser session.
+// Safe to call before the migration runs (the insert just fails silently).
+export function logPageView(videoId: string) {
+  try {
+    const key = `viewed:${videoId}`
+    if (sessionStorage.getItem(key)) return
+    sessionStorage.setItem(key, "1")
+    const sb = getSupabase()
+    if (!sb) return
+    sb.from("page_views")
+      .insert({ video_id: videoId })
+      .then(({ error }) => {
+        if (error) sessionStorage.removeItem(key)
+      })
+  } catch {
+    // sessionStorage unavailable (SSR/private mode) — skip tracking.
+  }
 }

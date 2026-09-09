@@ -64,7 +64,7 @@ export default function VideoCard({ video }: Props) {
                 img.dataset.fbk = "1"
                 img.src = img.src.replace(/maxresdefault|sddefault/, "hqdefault")
               }}
-              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+              className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-105"
               loading="lazy"
             />
           </div>

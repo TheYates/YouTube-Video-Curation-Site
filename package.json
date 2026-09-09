@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "format": "oxfmt"
+    "format": "oxfmt",
+    "ingest": "node scripts/ingest.mjs",
+    "ingest:serve": "node scripts/serve-ingest.mjs",
+    "transcripts:clean": "node scripts/clean-transcripts.mjs",
+    "frames:backfill": "node scripts/backfill-frames.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
@@ -16,6 +20,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^6.28.0",
+    "sonner": "^2.0.8",
     "youtube-dl-exec": "^3.1.15"
   },
   "devDependencies": {

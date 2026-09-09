@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useNavigate, useLocation } from "react-router-dom"
 
 const SearchIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -19,7 +19,11 @@ export default function NavBar() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [progress, setProgress] = useState(0)
   const navigate = useNavigate()
+  const location = useLocation()
   const mobileInputRef = useRef<HTMLInputElement>(null)
+
+  // Reading progress belongs to long-form video pages only.
+  const showProgress = location.pathname.startsWith("/video/")
 
   useEffect(() => {
     const onScroll = () => {
@@ -116,11 +120,13 @@ export default function NavBar() {
         </form>
       </div>
 
-      {/* Reading progress bar */}
-      <div
-        className="absolute bottom-0 left-0 h-[2px] bg-[var(--color-accent)]"
-        style={{ width: `${progress * 100}%`, transition: "width 100ms linear" }}
-      />
+      {/* Reading progress bar — video pages only, inset from the viewport edges */}
+      {showProgress && (
+        <div
+          className="absolute bottom-0 left-6 right-6 h-[2px] rounded-full bg-[var(--color-accent)]"
+          style={{ width: `calc(${progress * 100}% - ${progress * 48}px)`, transition: "width 100ms linear" }}
+        />
+      )}
     </header>
   )
 }

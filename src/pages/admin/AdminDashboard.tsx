@@ -22,6 +22,7 @@ export default function AdminDashboard() {
   const { data: cats = ["All"] } = useCategories()
 
   const totalWords = videos.reduce((acc, v) => acc + v.transcript.length, 0)
+  const totalChapters = videos.reduce((acc, v) => acc + v.chapters.length, 0)
   const recentVideos = [...videos]
     .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
     .slice(0, 5)
@@ -58,12 +59,12 @@ export default function AdminDashboard() {
       ),
     },
     {
-      label: "Subscribers",
-      value: "142",
+      // Newsletter is disabled for now — chapters is the real fourth metric.
+      label: "Chapters",
+      value: totalChapters.toLocaleString(),
       icon: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <rect x="2" y="4" width="20" height="16" rx="2" />
-          <path d="m2 7 10 7 10-7" />
+          <path d="M4 6h16M4 12h16M4 18h10" />
         </svg>
       ),
     },

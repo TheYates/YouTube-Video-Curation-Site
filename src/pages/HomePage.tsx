@@ -3,6 +3,7 @@ import { useVideos, useCategories } from "../hooks/useVideos"
 import VideoCard from "../components/VideoCard"
 import CategoryTabs from "../components/CategoryTabs"
 import EmailCapture from "../components/EmailCapture"
+import { NEWSLETTER_ENABLED } from "../lib/env"
 import AdSlot from "../components/AdSlot"
 
 function VideoCardSkeleton() {
@@ -49,7 +50,7 @@ export default function HomePage() {
         </div>
       </div>
 
-      <EmailCapture variant="banner" />
+      {NEWSLETTER_ENABLED && <EmailCapture variant="banner" />}
 
       <div className="mb-8">
         <CategoryTabs

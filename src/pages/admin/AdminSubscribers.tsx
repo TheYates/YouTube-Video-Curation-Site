@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { toast } from "sonner"
 
 interface Subscriber {
   id: string
@@ -92,7 +93,10 @@ export default function AdminSubscribers() {
           />
         </div>
         <button
-          onClick={() => downloadCSV(filtered)}
+          onClick={() => {
+            downloadCSV(filtered)
+            toast.success(`Exported ${filtered.length} subscriber${filtered.length !== 1 ? "s" : ""} to CSV`)
+          }}
           className="flex items-center gap-2 rounded-sm border px-4 py-2 font-mono text-xs uppercase tracking-widest transition-colors hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
           style={{ borderColor: "var(--color-border)", color: "var(--color-muted-foreground)" }}
         >
