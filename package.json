@@ -1,14 +1,11 @@
 {
-  "name": "figma-make-app",
+  "name": "signal-tooling",
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "description": "Local ingest/maintenance tooling for Signal (the app lives in web/). Not deployed.",
   "scripts": {
     "postinstall": "node scripts/ensure-ytdlp.mjs",
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "format": "oxfmt",
     "ingest": "node scripts/ingest.mjs",
     "ingest:serve": "node scripts/serve-ingest.mjs",
     "transcripts:clean": "node scripts/clean-transcripts.mjs",
@@ -16,23 +13,10 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
-    "@tanstack/react-query": "^5.102.8",
     "dotenv": "^17.4.2",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "react-router-dom": "^6.28.0",
-    "sonner": "^2.0.8",
     "youtube-dl-exec": "^3.1.15"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.0.0",
-    "@types/node": "^22.0.0",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^6.0.0",
-    "oxfmt": "^0.2.0",
-    "tailwindcss": "^4.0.0",
-    "typescript": "^5.7.0",
-    "vite": "^8.0.5"
+    "@types/node": "^22.0.0"
   }
 }

@@ -4,7 +4,8 @@
 
 A content site that curates YouTube videos across multiple categories, giving each one a
 synced clickable transcript, AI-generated summary, key takeaways, chapter markers, and a
-site-wide full-transcript search. Built with React 19 + Vite 8 + Tailwind CSS v4.
+site-wide full-transcript search. Built with Next.js 15 (App Router) + Tailwind CSS v4
+in `web/` (the old Vite frontend was archived after cutover).
 
 ### Routes
 

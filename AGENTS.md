@@ -1,41 +1,39 @@
-# figma-make-app
+# Signal — YouTube Video Curation Site
 
-React + Vite + Tailwind CSS project running inside Figma Make.
-
-## Development Server
-
-A Vite development server is **already running** on `$PORT` (default 8443). You don't need to start it manually.
-
-- Preview URL: The user can access the running app through the preview panel
-- Hot reload: Changes to source files are reflected immediately
+Next.js 15 (App Router) + Tailwind CSS v4 + Supabase. Production lives in `web/`
+(deployed to Vercel with Root Directory `web/`); repo root holds local
+ingest/maintenance tooling only (never deployed).
 
 ## Project Structure
 
 This is the canonical project structure. Start with task-relevant files below. Only follow imports or inspect other files when required, when a documented path is missing, or when the repository contradicts this guide.
 
-- `src/main.tsx` - React entrypoint; imports `src/index.css` and mounts `src/App.tsx` into the `#root` element
-- `src/App.tsx` - Primary application component and the usual starting point for UI work
-- `src/index.css` - Global CSS entrypoint and Tailwind CSS v4 import
-- `index.html` - Vite HTML shell containing the `#root` element and loading `src/main.tsx`
-- `package.json` - Project dependencies and the Vite build, development, preview, and formatting scripts
-- `vite.config.ts` - Vite configuration with React, Tailwind CSS v4, and Figma Make plugins plus the `@` alias for `src`
+- `web/app/` - Next.js routes: `(public)/` (feed, `/video/[id]`, `/search`), `admin/` (login + `(panel)` shell and pages), `sitemap.ts`, `robots.ts`
+- `web/components/` - Presentational components + client islands (`video-detail`, `site-header`, `transcript-pane`)
+- `web/lib/` - Server data layer (`videos.ts`), Supabase browser/server clients, `transcript.ts` (paragraphing), `auth-client.ts`
+- `web/middleware.ts` - Edge gate for `/admin/*` (session + `ADMIN_EMAILS` allow-list, fail closed)
+- `web/package.json` - App dependencies and `dev`/`build`/`start` scripts (own `pnpm-lock.yaml`)
+- `scripts/` - Local ingest pipeline run from the curator's machine (YouTube blocks datacenter IPs): `ingest.mjs` (single/batch CLI), `serve-ingest.mjs` (localhost relay for the admin UI), `clean-transcripts.mjs`, `backfill-frames.mjs`, `frames.mjs`, `ensure-ytdlp.mjs`
+- `scripts/.env` - Tooling secrets (service-role key lives here, never in the browser)
+- `supabase/` - `schema.sql`, `migrations/`, edge `functions/ingest` (cloud fallback)
+- `package.json` (root) - Tooling-only deps (`@supabase/supabase-js`, `dotenv`, `youtube-dl-exec`); scripts are `ingest`, `ingest:serve`, `transcripts:clean`, `frames:backfill`
 - `.mise.toml` - Toolchain versions for Node.js and pnpm
+- `vercel.json` - Legacy SPA rewrite for the retired Vite deployment; ignored once Root Directory is `web/`
 
 ## Dependencies
 
-- Runtime: React 19 and React DOM 19
-- Styling: Tailwind CSS v4 with the `@tailwindcss/vite` plugin
-- Build tooling: Vite 8, TypeScript 5.7, and `@vitejs/plugin-react`
-- Formatting: oxfmt
+- App (`web/`): Next 15, React 19, `@supabase/ssr` + `@supabase/supabase-js`, `sonner` (all notifications as toasts), Tailwind CSS v4 via `@tailwindcss/postcss`
+- Tooling (root): Node scripts only, no framework
+- Fonts: `next/font` (Fraunces display, Inter body, JetBrains Mono); theme tokens in `web/app/globals.css` `@theme` block
 
 ## Styling
 
-This project uses **Tailwind CSS v4** through the `@tailwindcss/vite` plugin configured in `vite.config.ts`. `src/index.css` imports Tailwind with `@import 'tailwindcss';`. Use Tailwind utility classes directly in JSX and put global CSS or Tailwind v4 theme customization in `src/index.css`. This scaffold does not need a Tailwind config file or PostCSS config.
+Tailwind CSS v4, no config file. Use utility classes directly in JSX; global CSS and `@theme` customization live in `web/app/globals.css`. CSS vars always use the `color-` infix (`var(--color-*)`). Editorial palette: cream `#fffdf8` background, ink text, terracotta accent `#d7402b`.
 
-`src/main.tsx` imports `src/index.css`, so global font wiring belongs in `src/index.css`. Keep CSS `@import` statements first, then add any `@font-face` rules and font-family defaults there.
+## Conventions
 
-## Code quality
-
-- Use double quotes for strings containing apostrophes (`"We're here to help"`), or escape them in single-quoted strings. An unescaped apostrophe in a single-quoted string breaks the build.
-- Ensure JSX tags are closed and braces are balanced.
-- Export components as default exports.
+- Server components by default; `"use client"` only for islands (player, transcript sync, search inputs, admin interactivity)
+- Per-page SEO via `generateMetadata` (`/video/[id]` sets title/description/OG); ISR via `export const revalidate`
+- Admin writes go through the service role (relay/edge function), never the anon key
+- Components: default exports, double quotes for strings containing apostrophes
+- Env: `NEXT_PUBLIC_*` is browser-safe; `ADMIN_EMAILS` and service-role keys are server-only — never leak them into client code or logs
