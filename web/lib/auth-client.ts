@@ -8,13 +8,22 @@ function safeNextPath(next: string | undefined): string {
   return "/admin/dashboard";
 }
 
+export const POST_LOGIN_NEXT_COOKIE = "post_login_next";
+
 export async function signInWithGoogle(next?: string): Promise<void> {
   const sb = getBrowserSupabase();
   if (!sb) throw new Error("Supabase is not configured.");
   // Land on /auth/callback (NOT the dashboard directly): it exchanges the
   // PKCE code for a session server-side first. Without that step the edge
   // middleware sees no cookies and bounces back to login in a loop.
-  const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(safeNextPath(next))}`;
+  //
+  // redirect_to is the BARE callback URL on purpose: Supabase matches it
+  // against the allow-list, and query-string matching there is unreliable.
+  // The return path travels in a short-lived same-origin cookie instead.
+  document.cookie =
+    `${POST_LOGIN_NEXT_COOKIE}=${encodeURIComponent(safeNextPath(next))}` +
+    "; path=/; max-age=600; SameSite=Lax";
+  const redirectTo = `${window.location.origin}/auth/callback`;
   const { error } = await sb.auth.signInWithOAuth({
     provider: "google",
     options: { redirectTo },

@@ -9,7 +9,14 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 export async function GET(req: Request) {
   const { searchParams, origin } = new URL(req.url);
   const code = searchParams.get("code");
-  const rawNext = searchParams.get("next") ?? "/admin/dashboard";
+  // Return path arrives via cookie (redirect_to must stay a bare URL for
+  // reliable allow-list matching); legacy ?next= still honored if present.
+  const cookieNext = req.headers
+    .get("cookie")
+    ?.split(";")
+    .map((c) => c.trim().split("="))
+    .find(([k]) => k === "post_login_next")?.[1];
+  const rawNext = searchParams.get("next") ?? (cookieNext ? decodeURIComponent(cookieNext) : "/admin/dashboard");
   const next = rawNext.startsWith("/admin/") ? rawNext : "/admin/dashboard";
 
   if (!code) {
@@ -37,9 +44,12 @@ export async function GET(req: Request) {
   );
   const { error } = await sb.auth.exchangeCodeForSession(code);
   if (error) {
+    console.error(`[auth/callback] code exchange failed: ${error.message}`);
     return NextResponse.redirect(
       `${origin}/admin/login?error=${encodeURIComponent(error.message)}`
     );
   }
+  // Single-use return path — clear it.
+  res.cookies.set("post_login_next", "", { path: "/", maxAge: 0 });
   return res;
 }
