@@ -11,9 +11,13 @@ function safeNextPath(next: string | undefined): string {
 export async function signInWithGoogle(next?: string): Promise<void> {
   const sb = getBrowserSupabase();
   if (!sb) throw new Error("Supabase is not configured.");
+  // Land on /auth/callback (NOT the dashboard directly): it exchanges the
+  // PKCE code for a session server-side first. Without that step the edge
+  // middleware sees no cookies and bounces back to login in a loop.
+  const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(safeNextPath(next))}`;
   const { error } = await sb.auth.signInWithOAuth({
     provider: "google",
-    options: { redirectTo: `${window.location.origin}${safeNextPath(next)}` },
+    options: { redirectTo },
   });
   if (error) throw error;
 }
