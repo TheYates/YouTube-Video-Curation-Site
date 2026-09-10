@@ -93,19 +93,23 @@ export default function TranscriptPane({ transcript, chapters = [], currentTime,
               {para.map((word) => {
                 const idx = wordIndex++
                 const isCurrent = idx === activeIdx
+                // Exactly one text-color class: accent for the spoken word,
+                // dimmed for played words, default otherwise. (Two competing
+                // color classes resolve by stylesheet order — unreliable.)
+                const colorClass = isCurrent
+                  ? "text-[var(--color-accent)]"
+                  : isActive && currentTime > word.endTime
+                    ? "text-[var(--color-muted-foreground)]"
+                    : "text-[var(--color-foreground)]"
                 return (
                   <button
                     key={idx}
                     ref={isCurrent ? activeRef : null}
                     onClick={() => onWordClick(word.startTime)}
                     className={[
-                      "rounded-sm px-0.5 py-0.5 font-sans text-base leading-8 transition-all cursor-pointer",
-                      isCurrent
-                        ? "bg-[var(--color-accent)] text-[var(--color-accent-foreground)]"
-                        : "hover:bg-[var(--color-muted)] hover:text-[var(--color-foreground)]",
-                      !isCurrent && isActive && currentTime > word.endTime
-                        ? "text-[var(--color-muted-foreground)]"
-                        : "text-[var(--color-foreground)]",
+                      "rounded-sm px-0.5 py-0.5 font-sans text-base leading-8 transition-colors cursor-pointer",
+                      colorClass,
+                      !isCurrent && "hover:bg-[var(--color-muted)]",
                     ].join(" ")}
                   >
                     {word.text}
