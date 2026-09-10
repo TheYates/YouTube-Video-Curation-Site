@@ -10,6 +10,7 @@ export const metadata: Metadata = {
   title: "The best ideas, word for word",
   description:
     "Hand-picked YouTube videos, transcribed and analysed. Click any word in a transcript to jump to that exact moment.",
+  alternates: { canonical: "/" },
 };
 
 export default async function Home({
