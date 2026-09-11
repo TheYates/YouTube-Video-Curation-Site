@@ -48,8 +48,12 @@ async function fetchWithRetry(
   return null
 }
 
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
+// Deployment marker — bump on every ship. Lets callers verify which
+// revision is live without writing rows (the dedupe probe returns it).
+const FN_VERSION = 2;
+
+function json(body: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify({ fnVersion: FN_VERSION, ...body }), {
     status,
     headers: { ...CORS, "Content-Type": "application/json" },
   })
