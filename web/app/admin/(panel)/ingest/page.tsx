@@ -169,6 +169,20 @@ export default function AdminIngestPage() {
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? `Ingest failed (HTTP ${res.status})`);
+      // Dedupe responses carry neither aiOk nor transcriptSource (no AI ran)
+      // — report them as-is instead of falling through to the warnings below.
+      if (body.deduped) {
+        clearInterval(tick);
+        setSteps((prev) => prev.map((s) => ({ ...s, status: "done" as StepStatus })));
+        setProcessing(false);
+        setDone(true);
+        setUrlsText("");
+        toast.success("Already in the library — no changes made.", {
+          action: goToLibraryAction,
+        });
+        setTimeout(() => router.push("/admin/videos"), 1800);
+        return;
+      }
       let warning = "";
       if (body.transcriptSource === "none") {
         warning = "Published without a transcript — no captions found and the Whisper fallback failed. See the function logs in Supabase.";
