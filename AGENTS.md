@@ -18,7 +18,7 @@ This is the canonical project structure. Start with task-relevant files below. O
 - `supabase/` - `schema.sql`, `migrations/`, edge `functions/ingest` (cloud fallback)
 - `package.json` (root) - Tooling-only deps (`@supabase/supabase-js`, `dotenv`, `youtube-dl-exec`); scripts are `ingest`, `ingest:serve`, `transcripts:clean`, `frames:backfill`
 - `.mise.toml` - Toolchain versions for Node.js and pnpm
-- `vercel.json` - Legacy SPA rewrite for the retired Vite deployment; ignored once Root Directory is `web/`
+- `web/` is deployed to Vercel with Root Directory `web/` (no root `vercel.json`; the legacy SPA rewrite retired with the Vite app)
 
 ## Dependencies
 
