@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { getVideos } from "../lib/videos";
+import { getVideoListings } from "../lib/videos";
 
 export const revalidate = 3600;
 
@@ -15,7 +15,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/search`, lastModified: now, changeFrequency: "monthly", priority: 0.3 },
   ];
   try {
-    const videos = await getVideos("All");
+    const videos = await getVideoListings();
     for (const v of videos) {
       entries.push({
         url: `${base}/video/${v.id}`,

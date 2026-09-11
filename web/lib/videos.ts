@@ -141,6 +141,28 @@ export async function getVideo(id: string): Promise<Video | null> {
   return video;
 }
 
+export interface VideoListing {
+  id: string;
+  publishedAt: string;
+}
+
+// Minimal ID list for sitemap.xml — one cheap query, no transcripts.
+// (The old sitemap fetched full videos incl. every word and timed out
+// Googlebot on cold starts.)
+export async function getVideoListings(): Promise<VideoListing[]> {
+  const sb = await getServerSupabase();
+  const { data, error } = await sb
+    .from("videos")
+    .select("id,published_at")
+    .order("published_at", { ascending: false })
+    .limit(5000);
+  if (error) throw error;
+  return ((data ?? []) as { id: string; published_at: string }[]).map((r) => ({
+    id: r.id,
+    publishedAt: r.published_at,
+  }));
+}
+
 export async function getCategories(): Promise<string[]> {
   const sb = await getServerSupabase();
   const { data, error } = await sb.from("videos").select("category").limit(5000);
