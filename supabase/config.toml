@@ -1,8 +1,9 @@
 [functions.ingest]
 enabled = true
-verify_jwt = false
+verify_jwt = true
 entrypoint = "./functions/ingest/index.ts"
 
-# verify_jwt = false lets the admin UI call this with the anon key.
-# Lock it down before exposing publicly: require Supabase Auth and check an
-# admin allow-list inside the function.
+# verify_jwt = true: the gateway rejects anonymous calls (401) before the
+# function runs. The admin UI sends the signed-in curator's access token,
+# and the function additionally checks auth.email() against ADMIN_EMAILS.
+# Requires: supabase secrets set ADMIN_EMAILS="you@gmail.com"

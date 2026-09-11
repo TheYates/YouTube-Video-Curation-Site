@@ -50,7 +50,7 @@ async function fetchWithRetry(
 
 // Deployment marker — bump on every ship. Lets callers verify which
 // revision is live without writing rows (the dedupe probe returns it).
-const FN_VERSION = 2;
+const FN_VERSION = 3;
 
 function json(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify({ fnVersion: FN_VERSION, ...body }), {
@@ -448,6 +448,31 @@ Deno.serve(async (req) => {
   }
 
   const sb = createClient(SUPABASE_URL, SERVICE_KEY)
+
+  // Curator auth: the gateway (verify_jwt) already rejected anonymous calls,
+  // but defense in depth — verify the caller's email against the allow-list
+  // (ADMIN_EMAILS secret, same addresses as the web app). Runs before any
+  // YouTube/Groq quota is spent.
+  const authHeader = req.headers.get("authorization") ?? ""
+  const callerJwt = authHeader.toLowerCase().startsWith("bearer ")
+    ? authHeader.slice(7)
+    : ""
+  if (!callerJwt) {
+    return json({ error: "Missing user session. Sign in to /admin first." }, 401)
+  }
+  const {
+    data: { user },
+    error: userErr,
+  } = await sb.auth.getUser(callerJwt)
+  const allowList = (Deno.env.get("ADMIN_EMAILS") ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+  const callerEmail = user?.email?.toLowerCase() ?? ""
+  if (userErr || !user || !allowList.includes(callerEmail)) {
+    console.error(`[ingest] forbidden for ${callerEmail || "unknown"}: ${userErr?.message ?? "not allow-listed"}`)
+    return json({ error: "Forbidden: curator allow-list only." }, 403)
+  }
 
   // Idempotent: re-ingesting the same URL returns the existing row.
   const { data: existing } = await sb

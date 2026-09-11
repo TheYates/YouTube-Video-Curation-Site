@@ -150,12 +150,20 @@ export default function AdminIngestPage() {
     }
 
     try {
+      // Cloud ingest is curator-only (verify_jwt + allow-list server-side):
+      // send the signed-in user's access token, not the anon key.
+      const sb = getBrowserSupabase();
+      const {
+        data: { session },
+      } = (await sb?.auth.getSession()) ?? { data: { session: null } };
+      const accessToken = session?.access_token ?? "";
+      if (!accessToken) throw new Error("No active session. Sign in to /admin again.");
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ingest`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({ youtubeUrl: ytUrl }),
       });
