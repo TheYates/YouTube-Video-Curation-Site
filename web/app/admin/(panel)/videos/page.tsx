@@ -24,16 +24,18 @@ function formatDate(dateStr: string) {
 
 const PAGE_SIZE = 10;
 
+const RELAY_URL = process.env.NEXT_PUBLIC_INGEST_RELAY_URL ?? "http://127.0.0.1:8917";
+
 export default function AdminVideosPage() {
   const [videos, setVideos] = useState<AdminVideo[]>([]);
   const [cats, setCats] = useState<string[]>(["All"]);
   const [pending, setPending] = useState(true);
   const [failed, setFailed] = useState(false);
-  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [page, setPage] = useState(1);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     const sb = getBrowserSupabase();
@@ -57,7 +59,6 @@ export default function AdminVideosPage() {
   const filtered = useMemo(
     () =>
       videos.filter((v) => {
-        if (removedIds.has(v.id)) return false;
         const matchSearch =
           !search ||
           v.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -65,16 +66,36 @@ export default function AdminVideosPage() {
         const matchCat = category === "All" || v.category === category;
         return matchSearch && matchCat;
       }),
-    [videos, removedIds, search, category]
+    [videos, search, category]
   );
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  function handleDelete(id: string) {
-    setRemovedIds((prev) => new Set(prev).add(id));
-    setConfirmDelete(null);
-    toast.success("Video removed from the list");
+  // Real delete via the local relay (service role): removes the videos row
+  // (Postgres cascades transcript/chapters/links/views) plus Storage frames.
+  async function handleDelete(id: string) {
+    setDeletingId(id);
+    try {
+      const res = await fetch(`${RELAY_URL}/video-delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoId: id }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? `Delete failed (HTTP ${res.status})`);
+      setVideos((prev) => prev.filter((v) => v.id !== id));
+      setConfirmDelete(null);
+      toast.success("Video deleted from the library");
+    } catch (e) {
+      toast.error(
+        e instanceof Error
+          ? `${e.message} — is the relay running (npm run ingest:serve)?`
+          : "Delete failed."
+      );
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   if (pending) {
@@ -266,14 +287,16 @@ export default function AdminVideosPage() {
                         <span className="flex items-center gap-1">
                           <button
                             onClick={() => handleDelete(video.id)}
-                            className="font-mono text-xs text-red-600 hover:underline"
+                            disabled={deletingId === video.id}
+                            className="font-mono text-xs text-red-600 hover:underline disabled:opacity-40"
                           >
-                            Confirm
+                            {deletingId === video.id ? "Deleting…" : "Confirm"}
                           </button>
                           <span style={{ color: "var(--color-border)" }}>·</span>
                           <button
                             onClick={() => setConfirmDelete(null)}
-                            className="font-mono text-xs transition-colors hover:text-[var(--color-foreground)]"
+                            disabled={deletingId === video.id}
+                            className="font-mono text-xs transition-colors hover:text-[var(--color-foreground)] disabled:opacity-40"
                             style={{ color: "var(--color-muted-foreground)" }}
                           >
                             Cancel

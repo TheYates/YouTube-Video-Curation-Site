@@ -5,8 +5,11 @@
 // same JSON shape the Edge Function returns.
 //
 // Usage:  npm run ingest:serve   (or: node scripts/serve-ingest.mjs)
-//   POST http://127.0.0.1:8917/ingest  { "youtubeUrl": "...", "force": false }
-//   GET  http://127.0.0.1:8917/health  → { "ok": true, "ytDlp": "2026.08.19" }
+//   POST http://127.0.0.1:8917/ingest        { "youtubeUrl": "...", "force": false }
+//   POST http://127.0.0.1:8917/ingest-batch  { "urls": ["...", ...], "force": false } (NDJSON stream)
+//   POST http://127.0.0.1:8917/chapter-frame { "youtubeId": "...", "chapterIndex": 0, "timestamp": 60 }
+//   POST http://127.0.0.1:8917/video-delete  { "videoId": "<uuid>" }
+//   GET  http://127.0.0.1:8917/health  → { "ok": true, "version": 4, ... }
 //
 // Security: binds 127.0.0.1 only (localhost, no LAN exposure). If INGEST_TOKEN
 // is set in scripts/.env, requests must send header x-ingest-token: <token>.
@@ -151,7 +154,7 @@ const server = createServer((req, res) => {
     const binPath = youtubedl?.constants?.YOUTUBE_DL_PATH ?? "";
     // Bump version whenever routes change — the admin UI shows it, so a
     // stale relay (old 404 text, missing routes) is obvious in one glance.
-    return send(res, 200, { ok: true, version: 3, routes: ["POST /ingest", "POST /ingest-batch", "POST /chapter-frame", "GET /health"], ytDlpBinary: binPath ? existsSync(String(binPath)) : false });
+    return send(res, 200, { ok: true, version: 4, routes: ["POST /ingest", "POST /ingest-batch", "POST /chapter-frame", "POST /video-delete", "GET /health"], ytDlpBinary: binPath ? existsSync(String(binPath)) : false });
   }
 
   if (req.method === "POST" && url.pathname === "/chapter-frame") {
@@ -218,6 +221,62 @@ const server = createServer((req, res) => {
     return;
   }
 
+  // Delete: removes the videos row (Postgres cascades transcript_words,
+  // chapters, affiliate_links, page_views) plus the chapter frame images in
+  // Storage (no cascade there). Serialized through the same mutex so a
+  // delete can never interleave with an ingest of the same video.
+  if (req.method === "POST" && url.pathname === "/video-delete") {
+    if (TOKEN && req.headers["x-ingest-token"] !== TOKEN) {
+      return send(res, 401, { error: "Bad or missing x-ingest-token." });
+    }
+    let raw = "";
+    req.on("data", (c) => {
+      raw += c;
+      if (raw.length > 100_000) req.destroy();
+    });
+    req.on("end", () => {
+      enqueue(async () => {
+        let videoId = "";
+        try {
+          videoId = String(JSON.parse(raw || "{}").videoId ?? "");
+        } catch {
+          return send(res, 400, { error: "Expected JSON { videoId }." });
+        }
+        if (!videoId) return send(res, 400, { error: "Expected JSON { videoId }." });
+        const { data: row, error: rowErr } = await sb
+          .from("videos")
+          .select("id,youtube_id,title")
+          .eq("id", videoId)
+          .maybeSingle();
+        if (rowErr) return send(res, 500, { error: `Video lookup failed: ${rowErr.message}` });
+        if (!row) return send(res, 404, { error: `Video ${videoId} not found.` });
+        console.log(`[relay] delete ${row.youtube_id} "${(row.title ?? "").slice(0, 60)}"…`);
+        // Storage frames first (no FK cascade into buckets).
+        try {
+          const { data: files } = await sb.storage.from("frames").list(row.youtube_id);
+          if (files?.length) {
+            const { error: rmErr } = await sb.storage
+              .from("frames")
+              .remove(files.map((f) => `${row.youtube_id}/${f.name}`));
+            if (rmErr) console.error(`[relay] frame cleanup warning: ${rmErr.message}`);
+          }
+        } catch (e) {
+          console.error(`[relay] frame cleanup warning:`, e?.message ?? e);
+        }
+        const { error: delErr } = await sb.from("videos").delete().eq("id", row.id);
+        if (delErr) return send(res, 500, { error: `Delete failed: ${delErr.message}` });
+        console.log(`[relay] deleted ${row.youtube_id}`);
+        return send(res, 200, { id: row.id, youtubeId: row.youtube_id });
+      }).catch((e) => {
+        console.error("[relay] video-delete failed:", e);
+        try {
+          send(res, 500, { error: String(e?.message ?? e) });
+        } catch {}
+      });
+    });
+    return;
+  }
+
   // Batch: sequential NDJSON stream — one JSON line per video as it
   // completes, plus a final { done: true, … } summary line. The whole batch
   // holds one mutex slot so it never interleaves with single ingests.
@@ -276,7 +335,7 @@ const server = createServer((req, res) => {
   }
 
   if (req.method !== "POST" || url.pathname !== "/ingest") {
-    return send(res, 404, { error: "POST /ingest, POST /ingest-batch, POST /chapter-frame, or GET /health only." });
+    return send(res, 404, { error: "POST /ingest, POST /ingest-batch, POST /chapter-frame, POST /video-delete, or GET /health only." });
   }
   if (TOKEN && req.headers["x-ingest-token"] !== TOKEN) {
     return send(res, 401, { error: "Bad or missing x-ingest-token." });
