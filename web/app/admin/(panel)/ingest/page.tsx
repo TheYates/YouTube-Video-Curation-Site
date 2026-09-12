@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
 import { listAdminVideos } from "@/lib/admin-data";
 
-const RELAY_URL = process.env.NEXT_PUBLIC_INGEST_RELAY_URL ?? "http://127.0.0.1:8917";
+const RELAY_URL = process.env.NEXT_PUBLIC_INGEST_RELAY_URL ?? "http://127.0.0.1:8931";
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 

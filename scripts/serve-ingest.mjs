@@ -5,11 +5,13 @@
 // same JSON shape the Edge Function returns.
 //
 // Usage:  npm run ingest:serve   (or: node scripts/serve-ingest.mjs)
-//   POST http://127.0.0.1:8917/ingest        { "youtubeUrl": "...", "force": false }
-//   POST http://127.0.0.1:8917/ingest-batch  { "urls": ["...", ...], "force": false } (NDJSON stream)
-//   POST http://127.0.0.1:8917/chapter-frame { "youtubeId": "...", "chapterIndex": 0, "timestamp": 60 }
-//   POST http://127.0.0.1:8917/video-delete  { "videoId": "<uuid>" }
-//   GET  http://127.0.0.1:8917/health  → { "ok": true, "version": 4, ... }
+//   Binds 127.0.0.1:8931 by default (INGEST_PORT overrides — Windows
+//   Hyper-V port exclusions can swallow the old 8917 on some boots).
+//   POST http://127.0.0.1:8931/ingest        { "youtubeUrl": "...", "force": false }
+//   POST http://127.0.0.1:8931/ingest-batch  { "urls": ["...", ...], "force": false } (NDJSON stream)
+//   POST http://127.0.0.1:8931/chapter-frame { "youtubeId": "...", "chapterIndex": 0, "timestamp": 60 }
+//   POST http://127.0.0.1:8931/video-delete  { "videoId": "<uuid>" }
+//   GET  http://127.0.0.1:8931/health  → { "ok": true, "version": 4, ... }
 //
 // Security: binds 127.0.0.1 only (localhost, no LAN exposure). If INGEST_TOKEN
 // is set in scripts/.env, requests must send header x-ingest-token: <token>.
@@ -25,7 +27,7 @@ import { existsSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import youtubedl from "youtube-dl-exec";
 
-const PORT = Number(process.env.INGEST_PORT ?? 8917);
+const PORT = Number(process.env.INGEST_PORT ?? 8931);
 const HOST = "127.0.0.1";
 const TOKEN = process.env.INGEST_TOKEN ?? "";
 
@@ -384,6 +386,18 @@ const server = createServer((req, res) => {
       } catch {}
     });
   });
+});
+
+server.on("error", (e) => {
+  if (e?.code === "EACCES" || e?.code === "EADDRINUSE") {
+    console.error(
+      `Cannot bind ${HOST}:${PORT} (${e.code}). Another relay may be running, ` +
+        `or Windows reserved the port (Hyper-V exclusions move on reboot). ` +
+        `Kill stale relays or set INGEST_PORT to a free port, e.g.: $env:INGEST_PORT=8931; npm run ingest:serve`,
+    );
+    process.exit(1);
+  }
+  throw e;
 });
 
 server.listen(PORT, HOST, () => {

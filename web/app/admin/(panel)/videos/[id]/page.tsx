@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
 import { getAdminCategories, getAdminVideoDetail } from "@/lib/admin-data";
 
-const RELAY_URL = process.env.NEXT_PUBLIC_INGEST_RELAY_URL ?? "http://127.0.0.1:8917";
+const RELAY_URL = process.env.NEXT_PUBLIC_INGEST_RELAY_URL ?? "http://127.0.0.1:8931";
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60);
