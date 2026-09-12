@@ -173,6 +173,26 @@ export async function getCategories(): Promise<string[]> {
   return ["All", ...uniq];
 }
 
+// Minimum videos before a category earns a public nav tab. Thin sections
+// read as abandoned to visitors and Google — hidden categories stay reachable
+// via direct URL, search, and related videos.
+export const MIN_CATEGORY_VIDEOS = 3;
+
+export async function getPublicCategories(): Promise<string[]> {
+  const sb = await getServerSupabase();
+  const { data, error } = await sb.from("videos").select("category").limit(5000);
+  if (error) throw error;
+  const counts = new Map<string, number>();
+  for (const r of (data ?? []) as { category: string }[]) {
+    counts.set(r.category, (counts.get(r.category) ?? 0) + 1);
+  }
+  const eligible = [...counts.entries()]
+    .filter(([, n]) => n >= MIN_CATEGORY_VIDEOS)
+    .map(([name]) => name)
+    .sort();
+  return ["All", ...eligible];
+}
+
 export async function searchVideos(query: string): Promise<SearchHit[]> {
   const sb = await getServerSupabase();
   // Server-side candidate filter: full-text over title/summary/transcript.

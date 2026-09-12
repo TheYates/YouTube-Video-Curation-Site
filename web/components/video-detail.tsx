@@ -140,7 +140,12 @@ export default function VideoDetail({
         <div className="mb-3 flex items-center gap-3">
           <span className="font-mono text-xs uppercase tracking-widest text-(--color-accent)">{video.category}</span>
           <span className="text-(--color-border)">·</span>
-          <span className="font-mono text-xs text-(--color-muted-foreground)">{formatDate(video.publishedAt)}</span>
+          <span
+            className="font-mono text-xs text-(--color-muted-foreground)"
+            title="Original YouTube upload date — Signal surfaces timeless ideas, not just news"
+          >
+            Originally uploaded {formatDate(video.publishedAt)}
+          </span>
           <span className="text-(--color-border)">·</span>
           <span className="font-mono text-xs text-(--color-muted-foreground)">{video.channelName}</span>
         </div>

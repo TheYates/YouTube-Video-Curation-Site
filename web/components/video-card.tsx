@@ -29,8 +29,11 @@ export default function VideoCard({ video }: { video: Video }) {
                   {video.category}
                 </span>
                 <span className="text-(--color-border)">·</span>
-                <span className="font-mono text-xs text-(--color-muted-foreground)">
-                  {formatDate(video.publishedAt)}
+                <span
+                  className="font-mono text-xs text-(--color-muted-foreground)"
+                  title="Original YouTube upload date"
+                >
+                  Uploaded {formatDate(video.publishedAt)}
                 </span>
               </div>
               <h2 className="font-display text-2xl leading-snug text-(--color-foreground) transition-colors group-hover:text-(--color-accent)">

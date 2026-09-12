@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getCategories, getVideos } from "../../lib/videos";
+import { getPublicCategories, getVideos } from "../../lib/videos";
 import CategoryTabs from "../../components/category-tabs";
 import VideoCard from "../../components/video-card";
 import AdSlot from "../../components/ad-slot";
@@ -19,7 +19,7 @@ export default async function Home({
   searchParams: Promise<{ category?: string }>;
 }) {
   const { category } = await searchParams;
-  const [allVideos, cats] = await Promise.all([getVideos("All"), getCategories()]);
+  const [allVideos, cats] = await Promise.all([getVideos("All"), getPublicCategories()]);
   // No param → show everything (an empty default would serve crawlers a blank feed).
   const activeCategory = category && cats.includes(category) ? category : "All";
   const filtered =
@@ -48,9 +48,7 @@ export default async function Home({
         </div>
       </div>
 
-      <div className="mb-8">
-        <AdSlot size="leaderboard" />
-      </div>
+      <AdSlot size="leaderboard" />
 
       <div className="mb-8">
         <CategoryTabs categories={cats} active={activeCategory} />
