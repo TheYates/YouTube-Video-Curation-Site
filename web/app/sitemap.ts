@@ -13,6 +13,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const entries: MetadataRoute.Sitemap = [
     { url: `${base}/`, lastModified: now, changeFrequency: "daily", priority: 1 },
     { url: `${base}/search`, lastModified: now, changeFrequency: "monthly", priority: 0.3 },
+    // Trust pages — high value for AdSense review and E-E-A-T signals.
+    ...["about", "contact", "privacy", "disclosure"].map((p) => ({
+      url: `${base}/${p}`,
+      lastModified: now,
+      changeFrequency: "yearly" as const,
+      priority: 0.5,
+    })),
   ];
   try {
     const videos = await getVideoListings();
