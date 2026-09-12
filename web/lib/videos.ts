@@ -173,21 +173,42 @@ export async function getCategories(): Promise<string[]> {
   return ["All", ...uniq];
 }
 
-// Minimum videos before a category earns a public nav tab. Thin sections
-// read as abandoned to visitors and Google — hidden categories stay reachable
-// via direct URL, search, and related videos.
-export const MIN_CATEGORY_VIDEOS = 3;
+// Fallback when app_settings is missing (migration not run yet).
+export const DEFAULT_MIN_CATEGORY_VIDEOS = 3;
+
+// Minimum videos before a category earns a public nav tab — curator-set via
+// /admin/categories (app_settings.min_category_videos). Thin sections read
+// as abandoned to visitors and Google; hidden categories stay reachable via
+// direct URL, search, and related videos.
+export async function getMinCategoryVideos(): Promise<number> {
+  try {
+    const sb = await getServerSupabase();
+    const { data, error } = await sb
+      .from("app_settings")
+      .select("value")
+      .eq("key", "min_category_videos")
+      .maybeSingle();
+    if (error || !data) return DEFAULT_MIN_CATEGORY_VIDEOS;
+    const n = Number((data as { value: string }).value);
+    return Number.isInteger(n) && n >= 1 && n <= 20 ? n : DEFAULT_MIN_CATEGORY_VIDEOS;
+  } catch {
+    return DEFAULT_MIN_CATEGORY_VIDEOS;
+  }
+}
 
 export async function getPublicCategories(): Promise<string[]> {
   const sb = await getServerSupabase();
-  const { data, error } = await sb.from("videos").select("category").limit(5000);
-  if (error) throw error;
+  const [catRes, threshold] = await Promise.all([
+    sb.from("videos").select("category").limit(5000),
+    getMinCategoryVideos(),
+  ]);
+  if (catRes.error) throw catRes.error;
   const counts = new Map<string, number>();
-  for (const r of (data ?? []) as { category: string }[]) {
+  for (const r of (catRes.data ?? []) as { category: string }[]) {
     counts.set(r.category, (counts.get(r.category) ?? 0) + 1);
   }
   const eligible = [...counts.entries()]
-    .filter(([, n]) => n >= MIN_CATEGORY_VIDEOS)
+    .filter(([, n]) => n >= threshold)
     .map(([name]) => name)
     .sort();
   return ["All", ...eligible];

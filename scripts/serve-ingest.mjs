@@ -156,7 +156,7 @@ const server = createServer((req, res) => {
     const binPath = youtubedl?.constants?.YOUTUBE_DL_PATH ?? "";
     // Bump version whenever routes change — the admin UI shows it, so a
     // stale relay (old 404 text, missing routes) is obvious in one glance.
-    return send(res, 200, { ok: true, version: 4, routes: ["POST /ingest", "POST /ingest-batch", "POST /chapter-frame", "POST /video-delete", "GET /health"], ytDlpBinary: binPath ? existsSync(String(binPath)) : false });
+    return send(res, 200, { ok: true, version: 5, routes: ["POST /ingest", "POST /ingest-batch", "POST /chapter-frame", "POST /video-delete", "POST /setting", "GET /health"], ytDlpBinary: binPath ? existsSync(String(binPath)) : false });
   }
 
   if (req.method === "POST" && url.pathname === "/chapter-frame") {
@@ -215,6 +215,53 @@ const server = createServer((req, res) => {
         return send(res, 200, { imageUrl: frame.imageUrl, frameTime: frame.frameTime, chapterIndex });
       }).catch((e) => {
         console.error("[relay] chapter-frame failed:", e);
+        try {
+          send(res, 500, { error: String(e?.message ?? e) });
+        } catch {}
+      });
+    });
+    return;
+  }
+
+  // Setting: curator-controlled site settings (service-role write; public
+  // read via RLS). Keys are allow-listed + validated — never a generic KV.
+  if (req.method === "POST" && url.pathname === "/setting") {
+    if (TOKEN && req.headers["x-ingest-token"] !== TOKEN) {
+      return send(res, 401, { error: "Bad or missing x-ingest-token." });
+    }
+    let raw = "";
+    req.on("data", (c) => {
+      raw += c;
+      if (raw.length > 100_000) req.destroy();
+    });
+    req.on("end", () => {
+      enqueue(async () => {
+        let key = "";
+        let value = "";
+        try {
+          const body = JSON.parse(raw || "{}");
+          key = String(body.key ?? "");
+          value = String(body.value ?? "");
+        } catch {
+          return send(res, 400, { error: "Expected JSON { key, value }." });
+        }
+        if (key === "min_category_videos") {
+          const n = Number(value);
+          if (!Number.isInteger(n) || n < 1 || n > 20) {
+            return send(res, 400, { error: "min_category_videos must be an integer 1–20." });
+          }
+          value = String(n);
+        } else {
+          return send(res, 400, { error: `Unknown setting: ${key || "(empty)"}.` });
+        }
+        const { error: upErr } = await sb
+          .from("app_settings")
+          .upsert({ key, value }, { onConflict: "key" });
+        if (upErr) return send(res, 500, { error: `Setting update failed: ${upErr.message}` });
+        console.log(`[relay] setting ${key}=${value}`);
+        return send(res, 200, { key, value });
+      }).catch((e) => {
+        console.error("[relay] setting failed:", e);
         try {
           send(res, 500, { error: String(e?.message ?? e) });
         } catch {}
@@ -337,7 +384,7 @@ const server = createServer((req, res) => {
   }
 
   if (req.method !== "POST" || url.pathname !== "/ingest") {
-    return send(res, 404, { error: "POST /ingest, POST /ingest-batch, POST /chapter-frame, POST /video-delete, or GET /health only." });
+    return send(res, 404, { error: "POST /ingest, POST /ingest-batch, POST /chapter-frame, POST /video-delete, POST /setting, or GET /health only." });
   }
   if (TOKEN && req.headers["x-ingest-token"] !== TOKEN) {
     return send(res, 401, { error: "Bad or missing x-ingest-token." });
