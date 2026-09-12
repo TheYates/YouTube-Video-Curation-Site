@@ -54,8 +54,29 @@ export default async function VideoPage({
   const tParam = Number(t ?? 0) || 0;
   const related = await getRelatedVideos(video).catch(() => []);
 
+  // VideoObject structured data: makes pages eligible for video rich
+  // results (the "Discovered videos" track in Search Console).
+  const dur = Math.max(0, Math.floor(video.durationSeconds));
+  const isoDuration = `PT${Math.floor(dur / 3600)}H${Math.floor((dur % 3600) / 60)}M${dur % 60}S`;
+  const videoJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "VideoObject",
+    name: video.title,
+    description: video.summary ? video.summary.slice(0, 500) : video.title,
+    thumbnailUrl: [video.thumbnailUrl],
+    uploadDate: new Date(video.publishedAt).toISOString(),
+    duration: isoDuration,
+    embedUrl: `https://www.youtube.com/embed/${video.youtubeId}`,
+    contentUrl: `https://www.youtube.com/watch?v=${video.youtubeId}`,
+    author: { "@type": "Person", name: video.channelName },
+  };
+
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(videoJsonLd) }}
+      />
       <VideoDetail video={video} tParam={tParam} />
       {related.length > 0 && (
         <div className="mx-auto max-w-5xl px-6">
