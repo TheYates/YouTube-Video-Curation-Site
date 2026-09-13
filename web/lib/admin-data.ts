@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export interface AdminVideo {
   id: string;
+  slug: string;
   youtubeId: string;
   title: string;
   channelName: string;
@@ -20,11 +21,12 @@ export interface AdminVideo {
 export async function listAdminVideos(sb: SupabaseClient): Promise<AdminVideo[]> {
   const { data, error } = await sb
     .from("videos")
-    .select("id,youtube_id,title,channel_name,published_at,duration_sec,category,thumbnail_url,chapters(id),affiliate_links(id)")
+    .select("id,slug,youtube_id,title,channel_name,published_at,duration_sec,category,thumbnail_url,chapters(id),affiliate_links(id)")
     .order("published_at", { ascending: false });
   if (error) throw error;
   const rows = (data ?? []) as Array<{
     id: string;
+    slug: string;
     youtube_id: string;
     title: string;
     channel_name: string;
@@ -45,6 +47,7 @@ export async function listAdminVideos(sb: SupabaseClient): Promise<AdminVideo[]>
   );
   return rows.map((r, i) => ({
     id: r.id,
+    slug: r.slug,
     youtubeId: r.youtube_id,
     title: r.title,
     channelName: r.channel_name,

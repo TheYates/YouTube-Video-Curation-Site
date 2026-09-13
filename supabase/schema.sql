@@ -5,6 +5,7 @@
 create table videos (
   id            uuid primary key default gen_random_uuid(),
   youtube_id    text not null unique,
+  slug          text not null unique, -- frozen at publish; public /video/<slug> URL
   title         text not null,
   channel_name  text not null,
   published_at  date not null,

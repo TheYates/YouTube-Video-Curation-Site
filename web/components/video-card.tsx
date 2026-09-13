@@ -20,7 +20,7 @@ function formatDuration(seconds: number) {
 export default function VideoCard({ video }: { video: Video }) {
   return (
     <article className="group border-b border-(--color-border) py-8 first:pt-0">
-      <Link href={`/video/${video.id}`} className="block">
+      <Link href={`/video/${video.slug}`} className="block">
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-[1fr_200px]">
           <div className="flex flex-col justify-between gap-4">
             <div>

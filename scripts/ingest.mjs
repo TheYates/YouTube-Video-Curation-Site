@@ -55,6 +55,30 @@ function iso8601ToSeconds(iso) {
   return Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0);
 }
 
+// Public URL slug (/video/<slug>), frozen at publish — retitles never change
+// it. Keep in sync with web/lib/slug.ts and supabase/functions/ingest/index.ts.
+function slugifyTitle(title) {
+  const stem = String(title ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/[\s_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60)
+    .replace(/-+$/, "");
+  return stem || "video";
+}
+
+async function uniqueSlug(sb, title) {
+  const stem = slugifyTitle(title);
+  for (let n = 1; ; n++) {
+    const slug = n === 1 ? stem : `${stem}-${n}`;
+    const { data } = await sb.from("videos").select("id").eq("slug", slug).maybeSingle();
+    if (!data) return slug;
+  }
+}
+
 const YT_CATEGORY_MAP = {
   27: "Education",
   28: "Science",
@@ -371,10 +395,12 @@ try {
 }
 
 // 4. Write (service role bypasses RLS).
+const slug = await uniqueSlug(sb, sn.title ?? youtubeId);
 const { data: videoRow, error: vErr } = await sb
   .from("videos")
   .insert({
     youtube_id: youtubeId,
+    slug,
     title: sn.title ?? youtubeId,
     channel_name: sn.channelTitle ?? "Unknown",
     published_at: (sn.publishedAt ?? new Date().toISOString()).slice(0, 10),
@@ -422,8 +448,8 @@ for (let i = 0; i < wordRows.length; i += 1000) {
   }
 }
 const frameCount = frameInfos.filter(Boolean).length;
-console.log(`done: ${videoRow.id} (${wordRows.length} words, ${ai.chapters.length} chapters, ${frameCount} frames, source=${transcriptSource})`);
-return { status: "ok", id: videoRow.id };
+console.log(`done: ${videoRow.id} /video/${slug} (${wordRows.length} words, ${ai.chapters.length} chapters, ${frameCount} frames, source=${transcriptSource})`);
+return { status: "ok", id: videoRow.id, slug };
 }
 
 // Batch driver: sequential, skip-and-continue. Single-URL runs behave

@@ -72,7 +72,7 @@ export default async function SearchPage({
         {results.map((result, i) => (
           <Link
             key={i}
-            href={`/video/${result.video.id}${result.matchTime > 0 ? `?t=${Math.floor(result.matchTime)}` : ""}`}
+            href={`/video/${result.video.slug}${result.matchTime > 0 ? `?t=${Math.floor(result.matchTime)}` : ""}`}
             className="group block rounded-sm border border-(--color-border) bg-(--color-card) p-5 transition-colors hover:border-(--color-accent)/40"
           >
             <div className="flex gap-4">

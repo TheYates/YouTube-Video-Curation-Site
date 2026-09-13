@@ -20,6 +20,7 @@ export interface AffiliateLink {
 
 export interface Video {
   id: string;
+  slug: string;
   youtubeId: string;
   title: string;
   channelName: string;

@@ -6,7 +6,7 @@ export default function RelatedVideos({ videos }: { videos: Video[] }) {
   return (
     <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
       {videos.map((video) => (
-        <Link key={video.id} href={`/video/${video.id}`} className="group block">
+        <Link key={video.id} href={`/video/${video.slug}`} className="group block">
           <div className="overflow-hidden rounded-sm" style={{ aspectRatio: "16/9" }}>
             <ThumbImage
               src={video.thumbnailUrl}

@@ -274,7 +274,7 @@ export default function AdminVideosPage() {
                       </Link>
                       <span style={{ color: "var(--color-border)" }}>·</span>
                       <a
-                        href={`/video/${video.id}`}
+                        href={`/video/${video.slug}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="font-mono text-xs uppercase tracking-wide transition-colors hover:text-[var(--color-accent)]"

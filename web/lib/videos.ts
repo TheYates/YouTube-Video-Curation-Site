@@ -27,6 +27,7 @@ interface AffiliateRow {
 
 interface VideoRow {
   id: string;
+  slug: string;
   youtube_id: string;
   title: string;
   channel_name: string;
@@ -45,6 +46,7 @@ interface VideoRow {
 function mapRowToVideo(row: VideoRow): Video {
   return {
     id: row.id,
+    slug: row.slug,
     youtubeId: row.youtube_id,
     title: row.title,
     channelName: row.channel_name,
@@ -127,15 +129,31 @@ export async function getVideos(category = "All"): Promise<Video[]> {
   return attachTranscripts(sb, (data ?? []) as VideoRow[]);
 }
 
-export async function getVideo(id: string): Promise<Video | null> {
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function getVideo(slugOrId: string): Promise<Video | null> {
   const sb = await getServerSupabase();
-  const { data, error } = await sb
+  // Slug-first; the UUID fallback keeps old /video/<uuid> links working
+  // (the page permanently redirects them to the slug). The UUID regex guard
+  // avoids a PostgREST 400 comparing uuid = <non-uuid text>.
+  const { data: bySlug, error: slugError } = await sb
     .from("videos")
     .select(FULL_VIDEO_SELECT)
     .order("start_time", { referencedTable: "chapters" })
-    .eq("id", id)
+    .eq("slug", slugOrId)
     .maybeSingle();
-  if (error) throw error;
+  if (slugError) throw slugError;
+  let data = bySlug;
+  if (!data && UUID_RE.test(slugOrId)) {
+    const { data: byId, error: idError } = await sb
+      .from("videos")
+      .select(FULL_VIDEO_SELECT)
+      .order("start_time", { referencedTable: "chapters" })
+      .eq("id", slugOrId)
+      .maybeSingle();
+    if (idError) throw idError;
+    data = byId;
+  }
   if (!data) return null;
   const [video] = await attachTranscripts(sb, [data as VideoRow]);
   return video;
@@ -143,22 +161,24 @@ export async function getVideo(id: string): Promise<Video | null> {
 
 export interface VideoListing {
   id: string;
+  slug: string;
   publishedAt: string;
 }
 
-// Minimal ID list for sitemap.xml — one cheap query, no transcripts.
+// Minimal slug list for sitemap.xml — one cheap query, no transcripts.
 // (The old sitemap fetched full videos incl. every word and timed out
 // Googlebot on cold starts.)
 export async function getVideoListings(): Promise<VideoListing[]> {
   const sb = await getServerSupabase();
   const { data, error } = await sb
     .from("videos")
-    .select("id,published_at")
+    .select("id,slug,published_at")
     .order("published_at", { ascending: false })
     .limit(5000);
   if (error) throw error;
-  return ((data ?? []) as { id: string; published_at: string }[]).map((r) => ({
+  return ((data ?? []) as { id: string; slug: string; published_at: string }[]).map((r) => ({
     id: r.id,
+    slug: r.slug,
     publishedAt: r.published_at,
   }));
 }

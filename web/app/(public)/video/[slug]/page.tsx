@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { getRelatedVideos, getVideo } from "../../../../lib/videos";
 import VideoDetail from "../../../../components/video-detail";
 import RelatedVideos from "../../../../components/related-videos";
@@ -9,10 +9,10 @@ export const revalidate = 3600;
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
-  const { id } = await params;
-  const video = await getVideo(id).catch(() => null);
+  const { slug } = await params;
+  const video = await getVideo(slug).catch(() => null);
   if (!video) return { title: "Video not found" };
   const description = video.summary
     ? video.summary.slice(0, 160)
@@ -20,7 +20,7 @@ export async function generateMetadata({
   return {
     title: video.title,
     description,
-    alternates: { canonical: `/video/${id}` },
+    alternates: { canonical: `/video/${video.slug}` },
     openGraph: {
       title: video.title,
       description,
@@ -43,13 +43,18 @@ export default async function VideoPage({
   params,
   searchParams,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ slug: string }>;
   searchParams: Promise<{ t?: string }>;
 }) {
-  const { id } = await params;
+  const { slug } = await params;
   const { t } = await searchParams;
-  const video = await getVideo(id).catch(() => null);
+  const video = await getVideo(slug).catch(() => null);
   if (!video) notFound();
+  // Old /video/<uuid> links (and any non-canonical slug) permanently point
+  // at the frozen slug — keeps shared links and Google's index intact.
+  if (slug !== video.slug) {
+    permanentRedirect(`/video/${video.slug}${t ? `?t=${t}` : ""}`);
+  }
 
   const tParam = Number(t ?? 0) || 0;
   const related = await getRelatedVideos(video).catch(() => []);

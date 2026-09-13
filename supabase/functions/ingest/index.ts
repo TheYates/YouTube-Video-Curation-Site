@@ -77,6 +77,21 @@ function iso8601ToSeconds(iso: string): number {
   return Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0)
 }
 
+// Public URL slug (/video/<slug>), frozen at publish — retitles never change
+// it. Keep in sync with web/lib/slug.ts and scripts/ingest.mjs.
+function slugifyTitle(title: string): string {
+  const stem = title
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/[\s_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60)
+    .replace(/-+$/, "")
+  return stem || "video"
+}
+
 // YouTube numeric category → our editorial buckets. Unknown → "General"
 // (the curator can recategorize; categories are derived dynamically).
 const YT_CATEGORY_MAP: Record<string, string> = {
@@ -554,11 +569,19 @@ Deno.serve(async (req) => {
   const ai = await summarize(sn.title ?? youtubeId, sn.channelTitle ?? "", transcriptText, GROQ_API_KEY)
   console.log(`[ingest] ai ok=${ai.ok}, chapters=${ai.chapters.length}`)
 
-  // 4. Write (service role bypasses RLS).
+  // 4. Write (service role bypasses RLS). Slug is frozen at publish.
+  const stem = slugifyTitle(sn.title ?? youtubeId)
+  let slug = stem
+  for (let n = 2; ; n++) {
+    const { data: clash } = await sb.from("videos").select("id").eq("slug", slug).maybeSingle()
+    if (!clash) break
+    slug = `${stem}-${n}`
+  }
   const { data: videoRow, error: vErr } = await sb
     .from("videos")
     .insert({
       youtube_id: youtubeId,
+      slug,
       title: sn.title ?? youtubeId,
       channel_name: sn.channelTitle ?? "Unknown",
       published_at: (sn.publishedAt ?? new Date().toISOString()).slice(0, 10),
@@ -600,9 +623,10 @@ Deno.serve(async (req) => {
     if (wErr) return json({ error: `Transcript write failed: ${wErr.message}`, id: vid }, 500)
   }
 
-  console.log(`[ingest] done: ${vid} (${wordRows.length} words, source=${transcriptSource})`)
+  console.log(`[ingest] done: ${vid} /video/${slug} (${wordRows.length} words, source=${transcriptSource})`)
   return json({
     id: vid,
+    slug,
     youtubeId,
     words: wordRows.length,
     chapters: ai.chapters.length,
