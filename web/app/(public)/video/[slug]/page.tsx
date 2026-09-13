@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cache } from "react";
 import { notFound, permanentRedirect } from "next/navigation";
 import { getRelatedVideos, getVideo } from "../../../../lib/videos";
 import VideoDetail from "../../../../components/video-detail";
@@ -6,13 +7,17 @@ import RelatedVideos from "../../../../components/related-videos";
 
 export const revalidate = 3600;
 
+// Metadata and page run in parallel for the same slug — dedup the fetch so
+// the video + transcript load once, not twice.
+const getCachedVideo = cache(getVideo);
+
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const video = await getVideo(slug).catch(() => null);
+  const video = await getCachedVideo(slug).catch(() => null);
   if (!video) return { title: "Video not found" };
   const description = video.summary
     ? video.summary.slice(0, 160)

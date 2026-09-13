@@ -77,6 +77,47 @@ function mapRowToVideo(row: VideoRow): Video {
   };
 }
 
+// Card columns: everything feed cards and related rows render — no chapters,
+// affiliate links, or transcript words. (The homepage used to download every
+// video's full transcript and never display any of it: N+ queries per render.)
+const CARD_SELECT =
+  "id,slug,youtube_id,title,channel_name,published_at,duration_sec,category,thumbnail_url,summary,takeaways,tags";
+
+interface CardRow {
+  id: string;
+  slug: string;
+  youtube_id: string;
+  title: string;
+  channel_name: string;
+  published_at: string;
+  duration_sec: number;
+  category: string;
+  thumbnail_url: string;
+  summary: string | null;
+  takeaways: string[] | null;
+  tags: string[] | null;
+}
+
+function mapCardToVideo(row: CardRow): Video {
+  return {
+    id: row.id,
+    slug: row.slug,
+    youtubeId: row.youtube_id,
+    title: row.title,
+    channelName: row.channel_name,
+    publishedAt: row.published_at,
+    durationSeconds: Number(row.duration_sec),
+    category: row.category,
+    thumbnailUrl: row.thumbnail_url,
+    summary: row.summary ?? "",
+    takeaways: row.takeaways ?? [],
+    chapters: [],
+    transcript: [],
+    tags: row.tags ?? [],
+    affiliateLinks: [],
+  };
+}
+
 // transcript_words is deliberately NOT embedded: embedded selects are capped
 // by the project's max-rows setting (default 1000), so long transcripts are
 // paged separately with range() — the documented pattern.
@@ -114,6 +155,18 @@ async function attachTranscripts(
       return mapRowToVideo({ ...row, transcript_words: words });
     })
   );
+}
+
+export async function getVideoCards(category = "All"): Promise<Video[]> {
+  const sb = await getServerSupabase();
+  let query = sb
+    .from("videos")
+    .select(CARD_SELECT)
+    .order("published_at", { ascending: false });
+  if (category !== "All") query = query.eq("category", category);
+  const { data, error } = await query;
+  if (error) throw error;
+  return ((data ?? []) as CardRow[]).map(mapCardToVideo);
 }
 
 export async function getVideos(category = "All"): Promise<Video[]> {
@@ -256,12 +309,11 @@ export async function searchVideos(query: string): Promise<SearchHit[]> {
 
 export async function getRelatedVideos(video: Video): Promise<Video[]> {
   const sb = await getServerSupabase();
-  const { data, error } = await sb
-    .from("videos")
-    .select(FULL_VIDEO_SELECT)
-    .order("start_time", { referencedTable: "chapters" })
-    .neq("id", video.id);
+  // Card columns, one query: scoring needs only tags/category.
+  // (Used to fetch the whole table WITH full transcripts to discard all
+  // but 3 — N queries for 3 cards.)
+  const { data, error } = await sb.from("videos").select(CARD_SELECT).neq("id", video.id);
   if (error) throw error;
-  const vids = await attachTranscripts(sb, (data ?? []) as VideoRow[]);
+  const vids = ((data ?? []) as CardRow[]).map(mapCardToVideo);
   return scoreRelated(vids, video);
 }
