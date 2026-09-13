@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { Fraunces, Inter, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
-import "./globals.css"; 
-import { Analytics } from "@vercel/analytics/next"
+import "./globals.css";
+import { Analytics } from "@vercel/analytics/next";
+import GaConsent from "../components/ga-consent";
 
 const display = Fraunces({ subsets: ["latin"], variable: "--font-display" });
 const sans = Inter({ subsets: ["latin"], variable: "--font-sans" });
@@ -37,6 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
         <Analytics />
+        <GaConsent />
       </body>
     </html>
   );

@@ -35,6 +35,31 @@ export default function PrivacyPage() {
         </section>
 
         <section className="space-y-2">
+          <h2 className="font-display text-xl">Analytics</h2>
+          <p>
+            Signal uses Vercel Web Analytics (privacy-friendly, cookieless) and,
+            only with your consent, Google Analytics 4 to see which videos get
+            read in aggregate. Google Analytics sets cookies, collects device
+            and usage data, and processes it under{" "}
+            <a
+              href="https://policies.google.com/privacy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-(--color-accent) hover:underline"
+            >
+              Google’s Privacy Policy
+            </a>
+            . Nothing here identifies you by name or email.
+          </p>
+          <p>
+            A cookie banner asks before any Google Analytics script loads. If
+            you accept and change your mind later, clear this site’s cookies (or
+            your browser storage for this site) and you will be asked again —
+            declining keeps Google Analytics fully off.
+          </p>
+        </section>
+
+        <section className="space-y-2">
           <h2 className="font-display text-xl">YouTube embeds</h2>
           <p>
             Every article embeds a YouTube player. When you load or play a video,
@@ -54,10 +79,11 @@ export default function PrivacyPage() {
         <section className="space-y-2">
           <h2 className="font-display text-xl">Advertising</h2>
           <p>
-            Signal currently shows no ads and sets no advertising cookies. If
-            advertising (such as Google AdSense) is added in the future, ad vendors
-            may use cookies to serve relevant ads, and this policy will be updated
-            to name them before they go live.
+            Signal currently shows no ads and sets no advertising cookies beyond
+            the consent-gated analytics above. If advertising (such as Google
+            AdSense) is added in the future, ad vendors may use cookies to serve
+            relevant ads, and this policy will be updated to name them before
+            they go live.
           </p>
         </section>
 
