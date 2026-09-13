@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   description: "How to reach the human behind Signal.",
 };
 
-const EMAIL = "hhhh.3nree@gmail.com";
+const EMAIL = "hhh.3nree@gmail.com";
 
 export default function ContactPage() {
   return (
