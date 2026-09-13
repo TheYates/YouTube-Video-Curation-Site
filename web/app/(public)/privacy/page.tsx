@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import CookieSettingsButton from "../../../components/cookie-settings-button";
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
@@ -53,10 +54,13 @@ export default function PrivacyPage() {
           </p>
           <p>
             A cookie banner asks before any Google Analytics script loads. If
-            you accept and change your mind later, clear this site’s cookies (or
-            your browser storage for this site) and you will be asked again —
-            declining keeps Google Analytics fully off.
+            you accept and change your mind later, use the button below or the
+            “Cookies” link in the footer to ask again — declining keeps Google
+            Analytics fully off.
           </p>
+          <div className="pt-1">
+            <CookieSettingsButton variant="button" />
+          </div>
         </section>
 
         <section className="space-y-2">

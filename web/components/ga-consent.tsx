@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { GoogleAnalytics } from "@next/third-parties/google";
 
 const GA_ID = process.env.NEXT_PUBLIC_GA_ID || "G-P5RT4FPR2F";
-const STORAGE_KEY = "signal-ga-consent";
+export const GA_CONSENT_KEY = "signal-ga-consent";
+const STORAGE_KEY = GA_CONSENT_KEY;
 
 type Consent = "pending" | "granted" | "denied";
 

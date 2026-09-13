@@ -1,4 +1,5 @@
 import Link from "next/link";
+import CookieSettingsButton from "./cookie-settings-button";
 
 const LINKS = [
   { href: "/about", label: "About" },
@@ -14,7 +15,7 @@ export default function SiteFooter() {
         <p className="font-display text-base" style={{ color: "var(--color-foreground)" }}>
           Signal<span style={{ color: "var(--color-accent)" }}>.</span>
         </p>
-        <nav className="flex flex-wrap gap-x-5 gap-y-2">
+        <nav className="flex flex-wrap items-center gap-x-5 gap-y-2">
           {LINKS.map((l) => (
             <Link
               key={l.href}
@@ -25,6 +26,7 @@ export default function SiteFooter() {
               {l.label}
             </Link>
           ))}
+          <CookieSettingsButton />
         </nav>
       </div>
     </footer>
