@@ -1,7 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  // Supabase lives in eu-west-1 (Ireland): run functions next to it instead
-  // of the Vercel default (iad1, US), so DB round-trips stay single-digit ms
-  // instead of paying trans-Atlantic latency on every query.
   "regions": ["dub1"]
 }
