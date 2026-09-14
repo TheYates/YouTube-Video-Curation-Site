@@ -5,6 +5,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
 import { listAdminVideos, type AdminVideo } from "@/lib/admin-data";
+import AdminSkeleton from "@/components/admin-skeleton";
 import ThumbImage from "@/components/thumb-image";
 
 function formatDuration(seconds: number) {
@@ -33,6 +34,7 @@ export default function AdminVideosPage() {
   const [failed, setFailed] = useState(false);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
+  const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
   const [page, setPage] = useState(1);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -69,8 +71,18 @@ export default function AdminVideosPage() {
     [videos, search, category]
   );
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  // Newest additions first by default; the Added header toggles direction.
+  const sorted = useMemo(
+    () =>
+      [...filtered].sort((a, b) => {
+        const delta = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        return sortDir === "desc" ? -delta : delta;
+      }),
+    [filtered, sortDir]
+  );
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const paged = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   // Real delete via the local relay (service role): removes the videos row
   // (Postgres cascades transcript/chapters/links/views) plus Storage frames.
@@ -99,16 +111,7 @@ export default function AdminVideosPage() {
   }
 
   if (pending) {
-    return (
-      <div className="py-20 text-center">
-        <p
-          className="font-mono text-xs uppercase tracking-widest"
-          style={{ color: "var(--color-muted-foreground)" }}
-        >
-          Loading videos…
-        </p>
-      </div>
-    );
+    return <AdminSkeleton variant="table" />;
   }
   if (failed) {
     return (
@@ -197,13 +200,26 @@ export default function AdminVideosPage() {
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--color-border)" }}>
-                {["Video", "Category", "Duration", "Published", "Links", "Actions"].map((h) => (
+                {["Video", "Category", "Duration", "Published", "Added", "Links", "Actions"].map((h) => (
                   <th
                     key={h}
                     className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-widest"
                     style={{ color: "var(--color-muted-foreground)" }}
                   >
-                    {h}
+                    {h === "Added" ? (
+                      <button
+                        onClick={() => {
+                          setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+                          setPage(1);
+                        }}
+                        title="Sort by date added"
+                        className="uppercase tracking-widest transition-colors hover:text-[var(--color-foreground)]"
+                      >
+                        Added {sortDir === "desc" ? "↓" : "↑"}
+                      </button>
+                    ) : (
+                      h
+                    )}
                   </th>
                 ))}
               </tr>
@@ -248,6 +264,9 @@ export default function AdminVideosPage() {
                   </td>
                   <td className="px-4 py-3 font-mono text-xs" style={{ color: "var(--color-muted-foreground)" }}>
                     {formatDate(video.publishedAt)}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs" style={{ color: "var(--color-muted-foreground)" }}>
+                    {formatDate(video.createdAt)}
                   </td>
                   <td className="px-4 py-3">
                     {video.affiliateCount ? (

@@ -10,6 +10,7 @@ import {
   type PageViewStats,
 } from "@/lib/admin-data";
 import ThumbImage from "@/components/thumb-image";
+import AdminSkeleton from "@/components/admin-skeleton";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -91,11 +92,7 @@ export default function AdminAnalyticsPage() {
     .slice(0, 5);
 
   if (pending) {
-    return (
-      <p className="py-16 text-center font-mono text-xs" style={{ color: "var(--color-muted-foreground)" }}>
-        Loading analytics…
-      </p>
-    );
+    return <AdminSkeleton variant="stats" />;
   }
   if (failed) {
     return (

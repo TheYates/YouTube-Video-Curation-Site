@@ -10,6 +10,7 @@ export interface AdminVideo {
   title: string;
   channelName: string;
   publishedAt: string;
+  createdAt: string;
   durationSeconds: number;
   category: string;
   thumbnailUrl: string;
@@ -21,8 +22,8 @@ export interface AdminVideo {
 export async function listAdminVideos(sb: SupabaseClient): Promise<AdminVideo[]> {
   const { data, error } = await sb
     .from("videos")
-    .select("id,slug,youtube_id,title,channel_name,published_at,duration_sec,category,thumbnail_url,chapters(id),affiliate_links(id)")
-    .order("published_at", { ascending: false });
+    .select("id,slug,youtube_id,title,channel_name,published_at,created_at,duration_sec,category,thumbnail_url,chapters(id),affiliate_links(id)")
+    .order("created_at", { ascending: false });
   if (error) throw error;
   const rows = (data ?? []) as Array<{
     id: string;
@@ -31,6 +32,7 @@ export async function listAdminVideos(sb: SupabaseClient): Promise<AdminVideo[]>
     title: string;
     channel_name: string;
     published_at: string;
+    created_at: string;
     duration_sec: number;
     category: string;
     thumbnail_url: string;
@@ -52,6 +54,7 @@ export async function listAdminVideos(sb: SupabaseClient): Promise<AdminVideo[]>
     title: r.title,
     channelName: r.channel_name,
     publishedAt: r.published_at,
+    createdAt: r.created_at,
     durationSeconds: Number(r.duration_sec),
     category: r.category,
     thumbnailUrl: r.thumbnail_url,

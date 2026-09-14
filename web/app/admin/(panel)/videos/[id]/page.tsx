@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
 import { getAdminCategories, getAdminVideoDetail } from "@/lib/admin-data";
+import AdminSkeleton from "@/components/admin-skeleton";
 
 const RELAY_URL = process.env.NEXT_PUBLIC_INGEST_RELAY_URL ?? "http://127.0.0.1:8931";
 
@@ -125,11 +126,7 @@ export default function AdminVideoEditPage() {
   }, [id]);
 
   if (loading) {
-    return (
-      <p className="py-16 text-center font-mono text-xs" style={{ color: "var(--color-muted-foreground)" }}>
-        Loading video…
-      </p>
-    );
+    return <AdminSkeleton variant="form" />;
   }
   if (notFound) {
     router.replace("/admin/videos");

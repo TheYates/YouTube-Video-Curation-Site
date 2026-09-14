@@ -124,12 +124,16 @@ export default function SiteHeader() {
         </form>
       </div>
 
-      {/* Reading progress bar — video pages only, inset from the viewport edges */}
+      {/* Reading progress bar — video pages only, same width as the content */}
       {showProgress && (
-        <div
-          className="absolute bottom-0 left-6 right-6 h-[2px] rounded-full bg-(--color-accent)"
-          style={{ width: `calc(${progress * 100}% - ${progress * 48}px)`, transition: "width 100ms linear" }}
-        />
+        <div className="absolute inset-x-0 bottom-0">
+          <div className="mx-auto max-w-5xl px-6">
+            <div
+              className="h-[2px] rounded-full bg-(--color-accent)"
+              style={{ width: `${progress * 100}%`, transition: "width 100ms linear" }}
+            />
+          </div>
+        </div>
       )}
     </header>
   );

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
 import { getAdminCategories, listAdminVideos } from "@/lib/admin-data";
+import AdminSkeleton from "@/components/admin-skeleton";
 
 export default function AdminCategoriesPage() {
   const [cats, setCats] = useState<string[] | null>(null);
@@ -111,11 +112,7 @@ export default function AdminCategoriesPage() {
   }
 
   if (pending) {
-    return (
-      <p className="py-16 text-center font-mono text-xs" style={{ color: "var(--color-muted-foreground)" }}>
-        Loading categories…
-      </p>
-    );
+    return <AdminSkeleton variant="list" />;
   }
 
   return (

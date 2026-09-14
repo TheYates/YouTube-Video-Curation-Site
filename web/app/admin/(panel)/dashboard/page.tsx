@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
 import { listAdminVideos, type AdminVideo } from "@/lib/admin-data";
+import AdminSkeleton from "@/components/admin-skeleton";
 
 function formatDuration(s: number) {
   const m = Math.floor(s / 60);
@@ -50,11 +51,7 @@ export default function AdminDashboardPage() {
   ];
 
   if (pending) {
-    return (
-      <p className="py-16 text-center font-mono text-xs" style={{ color: "var(--color-muted-foreground)" }}>
-        Loading dashboard…
-      </p>
-    );
+    return <AdminSkeleton variant="stats" />;
   }
   if (failed) {
     return (
