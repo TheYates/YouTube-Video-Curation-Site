@@ -596,6 +596,13 @@ Deno.serve(async (req) => {
     .select("id")
     .single()
   if (vErr || !videoRow) {
+    // Lost a race with a concurrent ingest of the same URL: report the
+    // existing row as a dupe instead of a 500 (youtube_id is unique).
+    const dupe = vErr && (vErr.code === "23505" || /duplicate|unique/i.test(vErr.message ?? ""))
+    if (dupe) {
+      const { data: winner } = await sb.from("videos").select("id").eq("youtube_id", youtubeId).maybeSingle()
+      if (winner) return json({ id: winner.id, youtubeId, deduped: true })
+    }
     return json({ error: `Database write failed: ${vErr?.message ?? "unknown"}` }, 500)
   }
   const vid = videoRow.id as string

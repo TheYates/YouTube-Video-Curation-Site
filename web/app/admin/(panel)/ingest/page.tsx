@@ -135,6 +135,19 @@ export default function AdminIngestPage() {
         });
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body.error ?? `Local ingest failed (HTTP ${res.status})`);
+        // Relay reports re-ingests as deduped (no AI ran) — same UX as cloud.
+        if (body.deduped) {
+          clearInterval(tick);
+          setSteps((prev) => prev.map((s) => ({ ...s, status: "done" as StepStatus })));
+          setProcessing(false);
+          setDone(true);
+          setUrlsText("");
+          toast.success("Already in the library — no changes made.", {
+            action: goToLibraryAction,
+          });
+          setTimeout(() => router.push("/admin/videos"), 1800);
+          return;
+        }
         let warning = "";
         if (body.transcriptSource === "none") {
           warning = "Published without a transcript — no captions found. The video may have captions disabled.";
