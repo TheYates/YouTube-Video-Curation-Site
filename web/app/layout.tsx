@@ -3,6 +3,7 @@ import { Fraunces, Inter, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import "./globals.css";
 import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import GaConsent from "../components/ga-consent";
 
 const display = Fraunces({ subsets: ["latin"], variable: "--font-display" });
@@ -38,6 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
         <Analytics />
+        <SpeedInsights />
         <GaConsent />
       </body>
     </html>
