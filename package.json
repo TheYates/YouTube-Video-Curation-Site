@@ -9,7 +9,10 @@
     "ingest": "node scripts/ingest.mjs",
     "ingest:serve": "node scripts/serve-ingest.mjs",
     "transcripts:clean": "node scripts/clean-transcripts.mjs",
-    "frames:backfill": "node scripts/backfill-frames.mjs"
+    "frames:backfill": "node scripts/backfill-frames.mjs",
+    "discover": "node scripts/discover.mjs",
+    "auto": "node scripts/auto-pipeline.mjs",
+    "sources:backfill": "node scripts/backfill-sources.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",

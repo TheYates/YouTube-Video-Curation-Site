@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Browser-side admin queries (anon key; the edge middleware guarantees the
 // caller is an allow-listed curator). Kept lightweight: no transcripts.
+// Writes never happen here — mutations go through the `curate` edge function
+// (service role + ADMIN_EMAILS allow-list server-side).
 
 export interface AdminVideo {
   id: string;
@@ -160,6 +162,145 @@ export interface PageViewStats {
   totalViews: number;
   viewsLast30d: number;
   trackingLive: boolean;
+}
+
+// ── Discovery pipeline: review queue + sources ─────────────────────────────
+
+export type CandidateStatus = "pending" | "approved" | "rejected" | "ingested" | "failed";
+
+export interface VideoCandidate {
+  id: string;
+  youtubeId: string;
+  title: string;
+  channelId: string | null;
+  channelName: string | null;
+  durationSeconds: number;
+  thumbnailUrl: string;
+  publishedAt: string | null;
+  discoveredVia: string;
+  score: number;
+  reason: string;
+  suggestedCategory: string;
+  status: CandidateStatus;
+  attempts: number;
+  createdAt: string;
+}
+
+function mapCandidate(r: {
+  id: string;
+  youtube_id: string;
+  title: string;
+  channel_id: string | null;
+  channel_name: string | null;
+  duration_sec: number;
+  thumbnail_url: string;
+  published_at: string | null;
+  discovered_via: string;
+  score: number;
+  reason: string;
+  suggested_category: string;
+  status: string;
+  attempts: number;
+  created_at: string;
+}): VideoCandidate {
+  return {
+    id: r.id,
+    youtubeId: r.youtube_id,
+    title: r.title,
+    channelId: r.channel_id,
+    channelName: r.channel_name,
+    durationSeconds: Number(r.duration_sec),
+    thumbnailUrl: r.thumbnail_url,
+    publishedAt: r.published_at,
+    discoveredVia: r.discovered_via,
+    score: Number(r.score),
+    reason: r.reason,
+    suggestedCategory: r.suggested_category,
+    status: r.status as CandidateStatus,
+    attempts: r.attempts,
+    createdAt: r.created_at,
+  };
+}
+
+export async function listCandidates(
+  sb: SupabaseClient,
+  statuses: CandidateStatus[],
+  limit = 100
+): Promise<VideoCandidate[]> {
+  const { data, error } = await sb
+    .from("video_candidates")
+    .select("*")
+    .in("status", statuses)
+    .order("score", { ascending: false })
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  if (error) throw error;
+  return ((data ?? []) as Parameters<typeof mapCandidate>[0][]).map(mapCandidate);
+}
+
+export async function countPendingCandidates(sb: SupabaseClient): Promise<number> {
+  const { count, error } = await sb
+    .from("video_candidates")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "pending");
+  if (error) return 0;
+  return count ?? 0;
+}
+
+export interface SourceChannelRow {
+  id: string;
+  channelId: string;
+  handle: string;
+  name: string;
+  category: string;
+  description: string;
+  builtin: boolean;
+  enabled: boolean;
+  lastDiscoveredAt: string | null;
+}
+
+export async function listSourceChannels(sb: SupabaseClient): Promise<SourceChannelRow[]> {
+  const { data, error } = await sb
+    .from("source_channels")
+    .select("*")
+    .order("category")
+    .order("name");
+  if (error) throw error;
+  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    id: String(r.id),
+    channelId: String(r.channel_id),
+    handle: String(r.handle),
+    name: String(r.name),
+    category: String(r.category),
+    description: String(r.description ?? ""),
+    builtin: r.builtin === true,
+    enabled: r.enabled === true,
+    lastDiscoveredAt: (r.last_discovered_at as string | null) ?? null,
+  }));
+}
+
+export interface SearchQueryRow {
+  id: string;
+  query: string;
+  category: string;
+  enabled: boolean;
+  lastPolledAt: string | null;
+}
+
+export async function listSearchQueries(sb: SupabaseClient): Promise<SearchQueryRow[]> {
+  const { data, error } = await sb
+    .from("search_queries")
+    .select("*")
+    .order("category")
+    .order("query");
+  if (error) throw error;
+  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    id: String(r.id),
+    query: String(r.query),
+    category: String(r.category),
+    enabled: r.enabled === true,
+    lastPolledAt: (r.last_polled_at as string | null) ?? null,
+  }));
 }
 
 export async function getPageViewStats(sb: SupabaseClient): Promise<PageViewStats> {

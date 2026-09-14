@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { getSessionEmail, signOut } from "../../../lib/auth-client";
+import { getBrowserSupabase } from "../../../lib/supabase-browser";
+import { countPendingCandidates } from "../../../lib/admin-data";
 
 const NEWSLETTER_ENABLED = process.env.NEXT_PUBLIC_NEWSLETTER_ENABLED === "true";
 
@@ -33,6 +35,16 @@ const baseNav: NavItem[] = [
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <rect x="2" y="6" width="20" height="12" rx="2" />
         <path d="m10 9 5 3-5 3V9z" fill="currentColor" stroke="none" />
+      </svg>
+    ),
+  },
+  {
+    to: "/admin/review",
+    label: "Review",
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M9 11l3 3 8-8" />
+        <path d="M20 12v6a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h9" />
       </svg>
     ),
   },
@@ -93,6 +105,7 @@ const baseNav: NavItem[] = [
 const sectionTitles: Record<string, string> = {
   "/admin/dashboard": "Dashboard",
   "/admin/videos": "Video Library",
+  "/admin/review": "Review Queue",
   "/admin/ingest": "Ingest Video",
   "/admin/sources": "Source Channels",
   "/admin/categories": "Categories",
@@ -104,9 +117,31 @@ export default function AdminPanelLayout({ children }: { children: React.ReactNo
   const pathname = usePathname();
   const router = useRouter();
   const [email, setEmail] = useState<string | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
     getSessionEmail().then(setEmail);
+  }, []);
+
+  // Pending-candidate badge: refreshed on mount and whenever the review
+  // page signals a queue change via the custom event it dispatches.
+  useEffect(() => {
+    let alive = true;
+    const refresh = () => {
+      const sb = getBrowserSupabase();
+      if (!sb) return;
+      countPendingCandidates(sb)
+        .then((n) => alive && setPendingCount(n))
+        .catch(() => {});
+    };
+    refresh();
+    window.addEventListener("signal:queue-updated", refresh);
+    const poll = setInterval(refresh, 60_000);
+    return () => {
+      alive = false;
+      window.removeEventListener("signal:queue-updated", refresh);
+      clearInterval(poll);
+    };
   }, []);
 
   const title =
@@ -163,6 +198,14 @@ export default function AdminPanelLayout({ children }: { children: React.ReactNo
               >
                 {item.icon}
                 <span className="font-mono text-xs uppercase tracking-wide">{item.label}</span>
+                {item.to === "/admin/review" && pendingCount > 0 && (
+                  <span
+                    className="ml-auto rounded-full px-1.5 py-0.5 font-mono text-[10px] font-bold leading-none"
+                    style={{ background: "var(--color-accent)", color: "var(--color-accent-foreground)" }}
+                  >
+                    {pendingCount > 99 ? "99+" : pendingCount}
+                  </span>
+                )}
               </Link>
             );
           })}

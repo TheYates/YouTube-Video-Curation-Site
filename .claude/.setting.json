@@ -1,0 +1,9 @@
+{
+    "env": {
+      "ANTHROPIC_AUTH_TOKEN": "sk-245vqvnk5jwbqm2dsxdlpt0jdy5sg1kr",
+      "ANTHROPIC_BASE_URL": "https://api.b.ai",
+      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+      "ANTHROPIC_MODEL": "qwen3.8-flash",
+      "ANTHROPIC_SMALL_FAST_MODEL": "claude-haiku-4.5"
+    }
+  }

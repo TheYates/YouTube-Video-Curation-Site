@@ -19,6 +19,8 @@ in `web/` (the old Vite frontend was archived after cutover).
 | `/admin/videos` | `AdminVideos` | Video library table |
 | `/admin/videos/:id` | `AdminVideoEdit` | Edit metadata, takeaways, affiliate links |
 | `/admin/ingest` | `AdminIngest` | URL paste pipeline |
+| `/admin/review` | `AdminReview` | Discovery candidate approval queue (pending → approve/reject; ingested by scheduled `npm run auto`) |
+| `/admin/sources` | `AdminSources` | Source channels + saved searches (Supabase-backed discovery config) |
 | `/admin/categories` | `AdminCategories` | Manage categories |
 | `/admin/subscribers` | `AdminSubscribers` | Email list + CSV export |
 | `/admin/analytics` | `AdminAnalytics` | Stats tiles + category bar chart |
@@ -51,8 +53,11 @@ Accent: `#d7402b` (terracotta red). Background: `#fffdf8` (cream). All color tok
 
 ### Current data state
 
-All data is **mock/static**. Migration path: Supabase (DB) + YouTube Data API v3 (metadata)
-+ Groq Whisper (transcription, free tier) + Groq LLaMA 3.3 70B (summaries, free tier).
+Production data lives in Supabase (videos, chapters, transcript_words, affiliate_links,
+page_views, app_settings, plus the discovery tables source_channels, search_queries,
+video_candidates). Discovery worker: `scripts/discover.mjs` stages candidates as pending;
+nothing publishes without curator approval in `/admin/review`; the scheduled
+`npm run auto` ingests approved candidates on the curator's machine.
 
 ### Code conventions
 
