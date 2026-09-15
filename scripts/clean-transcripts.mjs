@@ -1,5 +1,7 @@
 // One-off backfill: repairs transcript_words rows written before the
-// ingest-time cleaning (SFX filter, trimmed text, event-distributed timings).
+// ingest-time cleaning (SFX filter, trimmed text, event-distributed timings)
+// and splits caption-event-sized rows into per-word rows (the web UI needs
+// word granularity — see splitIntoWords in ingest-core.mjs).
 //
 //  node scripts/clean-transcripts.mjs [--dry-run] [--youtube-id=XXX]
 //    --dry-run   report only, write nothing (default unless --apply given)
@@ -7,6 +9,8 @@
 //
 // Repair per video (rows fetched in insertion order via bigserial id, which
 // recovers the original caption seg order inside tied-timestamp runs):
+//   0. videos whose rows already average ~1 token per row (word-level
+//      source: manual per-seg captions or Whisper) are skipped untouched
 //   1. trim/collapse whitespace, drop empties + sound-effect tokens
 //      ([music], [applause], (laughter), ♪, …)
 //   2. runs of identical start_time (= one caption event with no per-seg
@@ -14,12 +18,15 @@
 //      (fallback 2s), so order is chronological and every word has
 //      start < end (click-to-seek + active highlight need this)
 //   3. lone words with end <= start get a 0.4s duration
-//   4. transcript_text is rebuilt (transcript_tsv regenerates automatically)
+//   4. multi-word rows (caption events) are split into per-word rows with
+//      length-proportional time slices
+//   5. transcript_text is rebuilt (transcript_tsv regenerates automatically)
 
 import dotenv from "dotenv";
 dotenv.config({ path: new URL("./.env", import.meta.url) });
 
 import { createClient } from "@supabase/supabase-js";
+import { splitIntoWords } from "./ingest-core.mjs";
 
 const APPLY = process.argv.includes("--apply");
 const onlyArg = process.argv.find((a) => a.startsWith("--youtube-id="));
@@ -108,19 +115,29 @@ if (vErr) {
 console.log(APPLY ? "APPLY mode — writing changes." : "Dry run — no writes (add --apply to write).");
 for (const v of videos ?? []) {
   const rows = await fetchAllWords(v.id);
+  // Skip videos already at word granularity — avg tokens per row ≈ 1 means
+  // the source was manual per-seg captions or Whisper; rewriting them would
+  // only churn rows (and row ids) for no visual change.
+  const tokenCount = rows.reduce((a, r) => a + String(r.text ?? "").trim().split(/\s+/).filter(Boolean).length, 0);
+  const avgTokens = rows.length ? tokenCount / rows.length : 0;
+  if (rows.length && avgTokens <= 1.5) {
+    console.log(`${v.youtube_id} "${(v.title ?? "").slice(0, 50)}": already word-level (avg ${avgTokens.toFixed(2)} tokens/row) — skipped`);
+    continue;
+  }
   const { words, dropped, retimed } = repair(rows);
-  const text = words.map((w) => w.text).join(" ");
+  const split = splitIntoWords(words.map((w) => ({ text: w.text, startTime: w.start, endTime: w.end })));
+  const text = split.map((w) => w.text).join(" ");
   console.log(
-    `${v.youtube_id} "${(v.title ?? "").slice(0, 50)}": ${rows.length} → ${words.length} words ` +
-      `(dropped ${dropped} SFX/junk, retimed ${retimed})`,
+    `${v.youtube_id} "${(v.title ?? "").slice(0, 50)}": ${rows.length} → ${split.length} words ` +
+      `(dropped ${dropped} SFX/junk, retimed ${retimed}, avg ${avgTokens.toFixed(1)} tokens/row)`,
   );
-  if (!APPLY || !words.length) continue;
+  if (!APPLY || !split.length) continue;
   const { error: delErr } = await sb.from("transcript_words").delete().eq("video_id", v.id);
   if (delErr) {
     console.error(`  delete failed: ${delErr.message} — SKIPPED`);
     continue;
   }
-  const wordRows = words.map((w) => ({ video_id: v.id, text: w.text, start_time: w.start, end_time: w.end }));
+  const wordRows = split.map((w) => ({ video_id: v.id, text: w.text, start_time: w.startTime, end_time: w.endTime }));
   for (let k = 0; k < wordRows.length; k += 1000) {
     const { error: insErr } = await sb.from("transcript_words").insert(wordRows.slice(k, k + 1000));
     if (insErr) {

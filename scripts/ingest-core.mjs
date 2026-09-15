@@ -28,6 +28,37 @@ export function extractYouTubeId(u) {
   return null;
 }
 
+// The web transcript UI renders one clickable button per transcript_words
+// row and groups rows into paragraphs with pause/length heuristics. Caption
+// events arrive as multi-word lines (5-8s, whole sentences), so storing them
+// 1:1 makes every "word" a sentence and collapses the whole video into ~3
+// giant paragraphs. Split each event into per-word rows, slicing its time
+// span proportionally to token length (spaces read faster than long words).
+// Rows that already carry their own single-word text (Whisper output, manual
+// per-seg timings) pass through untouched.
+export function splitIntoWords(rows) {
+  const out = [];
+  for (const row of rows) {
+    const tokens = String(row.text ?? "").trim().split(/\s+/).filter(Boolean);
+    if (tokens.length <= 1) {
+      if (tokens.length === 1) out.push({ ...row, text: tokens[0] });
+      continue;
+    }
+    const start = Number(row.startTime ?? 0);
+    const end = Number(row.endTime ?? start);
+    const weights = tokens.map((t) => Math.max(t.replace(/[^[\](),.;:!?"'\u201c\u201d\u2019]+/g, "").length, 1));
+    const total = weights.reduce((a, b) => a + b, 0);
+    let cursor = start;
+    const slice = (end - start) / total;
+    tokens.forEach((token, i) => {
+      const tokenEnd = start + slice * (weights.slice(0, i + 1).reduce((a, b) => a + b, 0));
+      out.push({ ...row, text: token, startTime: cursor, endTime: tokenEnd });
+      cursor = tokenEnd;
+    });
+  }
+  return out;
+}
+
 function iso8601ToSeconds(iso) {
   const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
   if (!m) return 0;
@@ -314,6 +345,7 @@ export async function ingestOne(url, opts = {}) {
     console.error("No transcript obtained — aborting (not writing a hollow row).");
     return { status: "failed", detail: "No transcript obtained — aborting (not writing a hollow row)." };
   }
+  words = splitIntoWords(words);
   console.log(`transcript ok: ${words.length} words (source=${transcriptSource})`);
   const transcriptText = words.map((w) => w.text).join(" ").replace(/\s+/g, " ").trim();
 
