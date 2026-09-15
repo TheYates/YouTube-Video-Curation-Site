@@ -367,7 +367,7 @@ async function main() {
     return true;
   });
 
-  // ── Score (one batched Groq call) ─────────────────────────────────────────
+  // ── Score (batched Groq calls, chunked to stay under request size limits) ──
   let siteCategories = ["Education", "Finance", "Tech", "Science", "Philosophy"];
   let siteContext = "an editorial curation site for in-depth explained videos";
   if (sb) {
@@ -377,7 +377,12 @@ async function main() {
     const { data: settings } = await sb.from("app_settings").select("value").eq("key", "site_context").maybeSingle();
     if (settings?.value) siteContext = settings.value;
   }
-  const scores = await scoreBatch(eligible, siteCategories, siteContext);
+  const scores = new Map();
+  const SCORE_CHUNK = 40; // ~340-item batches exceed Groq's request size limit
+  for (let i = 0; i < eligible.length; i += SCORE_CHUNK) {
+    const part = await scoreBatch(eligible.slice(i, i + SCORE_CHUNK), siteCategories, siteContext);
+    for (const [k, v] of part) scores.set(k, v);
+  }
 
   // ── Write candidates (first discovery source wins) ───────────────────────
   const rows = eligible.map((d) => {
