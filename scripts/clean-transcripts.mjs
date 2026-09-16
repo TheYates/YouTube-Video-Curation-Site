@@ -1,32 +1,37 @@
-// One-off backfill: repairs transcript_words rows written before the
-// ingest-time cleaning (SFX filter, trimmed text, event-distributed timings)
-// and splits caption-event-sized rows into per-word rows (the web UI needs
-// word granularity — see splitIntoWords in ingest-core.mjs).
+// Full rewrite backfill: rebuilds transcript_words for EVERY video in spoken
+// order with strictly monotonic timings.
+//
+// Root cause it fixes: ingest used to spread each caption event over its full
+// dDurationMs (which overlaps the next event), and the web reads
+// ORDER BY start_time — so each event's tail sorted past the next event's
+// head (1-2 words swapped at every boundary, site-wide).
+//
+// Repair per video (rows fetched in insertion order via bigserial id, which
+// IS the spoken order — event/seg order at ingest time):
+//   1. trim/collapse whitespace, drop empties + sound-effect tokens
+//      ([music], [applause], (laughter), ♪, …)
+//   2. split multi-word rows into per-word rows (length-proportional slices —
+//      see splitIntoWords in ingest-core.mjs)
+//   3. re-anchor per caption EVENT (see repair): each event keeps its start
+//      (the trustworthy anchor) and its words are compressed to fit the gap
+//      to the next event — no cumulative drift. Lone words with end <= start
+//      get a 0.4s duration (0.04s floor inside the monotonic pass). Tail is
+//      clamped to videos.duration_sec.
+//   4. transcript_text is rebuilt (transcript_tsv regenerates automatically)
 //
 //  node scripts/clean-transcripts.mjs [--dry-run] [--youtube-id=XXX]
 //    --dry-run   report only, write nothing (default unless --apply given)
 //    --apply     delete + rewrite each video's words and transcript_text
 //
-// Repair per video (rows fetched in insertion order via bigserial id, which
-// recovers the original caption seg order inside tied-timestamp runs):
-//   0. videos whose rows already average ~1 token per row (word-level
-//      source: manual per-seg captions or Whisper) are skipped untouched
-//   1. trim/collapse whitespace, drop empties + sound-effect tokens
-//      ([music], [applause], (laughter), ♪, …)
-//   2. runs of identical start_time (= one caption event with no per-seg
-//      timings) get even slices of the span to the next run's start
-//      (fallback 2s), so order is chronological and every word has
-//      start < end (click-to-seek + active highlight need this)
-//   3. lone words with end <= start get a 0.4s duration
-//   4. multi-word rows (caption events) are split into per-word rows with
-//      length-proportional time slices
-//   5. transcript_text is rebuilt (transcript_tsv regenerates automatically)
+// Safety: back up first in SQL:
+//   create table transcript_words_backup_20260916 as select * from transcript_words;
+// Canary first: --youtube-id=<id> --apply, check the pane, then full --apply.
 
 import dotenv from "dotenv";
 dotenv.config({ path: new URL("./.env", import.meta.url) });
 
 import { createClient } from "@supabase/supabase-js";
-import { splitIntoWords } from "./ingest-core.mjs";
+import { enforceMonotonic, splitIntoWords } from "./ingest-core.mjs";
 
 const APPLY = process.argv.includes("--apply");
 const onlyArg = process.argv.find((a) => a.startsWith("--youtube-id="));
@@ -64,47 +69,90 @@ async function fetchAllWords(videoId) {
   return all;
 }
 
-function repair(rows) {
+function repair(rows, durationSec) {
   let dropped = 0;
-  const kept = [];
+  const cleaned = [];
   for (const r of rows) {
     const text = cleanText(r.text);
     if (!text) {
       dropped++;
       continue;
     }
-    kept.push({ text, start: Number(r.start_time), end: Number(r.end_time) });
+    let start = Number(r.start_time);
+    let end = Number(r.end_time);
+    if (!Number.isFinite(start)) start = 0;
+    if (!(end > start)) end = start + 0.4;
+    cleaned.push({ text, startTime: start, endTime: end });
   }
-  // Group runs of identical start_time (one caption event).
-  let retimed = 0;
-  let i = 0;
-  while (i < kept.length) {
-    let j = i + 1;
-    while (j < kept.length && kept[j].start === kept[i].start) j++;
-    const runLen = j - i;
-    if (runLen > 1) {
-      const runStart = kept[i].start;
-      const nextStart = j < kept.length ? kept[j].start : NaN;
-      let span = nextStart - runStart;
-      if (!span || span <= 0 || !Number.isFinite(span)) span = 2;
-      const slice = span / runLen;
-      for (let k = 0; k < runLen; k++) {
-        kept[i + k].start = runStart + k * slice;
-        kept[i + k].end = runStart + (k + 1) * slice;
-        retimed++;
-      }
-    } else {
-      if (!(kept[i].end > kept[i].start)) {
-        kept[i].end = kept[i].start + 0.4;
-        retimed++;
-      }
+  // Split caption-event-sized rows first, so per-word slices inherit the
+  // event's span proportionally.
+  const split = splitIntoWords(cleaned);
+
+  // Regroup into caption events. A new event starts on a backward time jump
+  // (the old overlapping-duration bug) or a clear pause. Event STARTS are
+  // the trustworthy anchors (YouTube's tStartMs); within-event spreads are
+  // approximate, so each event is compressed to fit the gap to the next
+  // event rather than nudged forward word-by-word (which accumulates drift
+  // and leaves the karaoke highlight progressively late).
+  const PAUSE = 0.8;
+  const groups = [];
+  let cur = [];
+  let prevEnd = -Infinity;
+  for (const w of split) {
+    if (cur.length && (w.startTime < prevEnd - 0.02 || w.startTime - prevEnd > PAUSE)) {
+      groups.push(cur);
+      cur = [];
+      prevEnd = -Infinity;
     }
-    i = j;
+    cur.push(w);
+    prevEnd = Math.max(prevEnd, Number(w.endTime));
   }
-  return { words: kept, dropped, retimed };
+  if (cur.length) groups.push(cur);
+
+  const before = split.map((w) => w.startTime);
+  let eventsRescaled = 0;
+  groups.forEach((g, gi) => {
+    const gStart = g[0].startTime;
+    const gOrigEnd = Math.max(...g.map((w) => Number(w.endTime)));
+    const origSpan = gOrigEnd - gStart;
+    if (!(origSpan > 0)) return;
+    const nextStart = gi + 1 < groups.length ? groups[gi + 1][0].startTime : NaN;
+    // Available span: up to the next event start, never stretching across
+    // it (pauses stay pauses — avail just equals origSpan there).
+    let avail = origSpan;
+    if (Number.isFinite(nextStart) && nextStart > gStart) avail = Math.min(origSpan, nextStart - gStart);
+    if (!(avail > 0)) return;
+    if (origSpan > avail + 0.02) {
+      // Overflowed event: re-spread its words length-proportionally across
+      // the fitted span. (Old intra-event spacing was even-sliced
+      // approximation, so nothing true is lost.)
+      const fresh = splitIntoWords([
+        { text: g.map((w) => w.text).join(" "), startTime: gStart, endTime: gStart + avail },
+      ]);
+      g.forEach((w, i) => {
+        w.startTime = fresh[i].startTime;
+        w.endTime = fresh[i].endTime;
+      });
+      eventsRescaled++;
+    }
+  });
+  // Safety net: should be a near-no-op now (only float dust / tiny overlaps).
+  enforceMonotonic(split);
+  // Clamp the tail to the video duration so seeks stay in range. Only the
+  // end is capped (start anchors are preserved); a tiny overflow past the
+  // duration on the final word is left rather than breaking monotonicity.
+  if (Number.isFinite(durationSec) && durationSec > 0 && split.length) {
+    const last = split[split.length - 1];
+    if (last.endTime > durationSec) last.endTime = Math.max(last.startTime + 0.04, durationSec);
+  }
+  let shifted = 0;
+  for (let k = 0; k < split.length; k++) {
+    if (Math.abs(split[k].startTime - before[k]) > 0.0005) shifted++;
+  }
+  return { words: split, dropped, eventsRescaled, shifted };
 }
 
-let videoQuery = sb.from("videos").select("id,youtube_id,title");
+let videoQuery = sb.from("videos").select("id,youtube_id,title,duration_sec");
 if (ONLY_YT) videoQuery = videoQuery.eq("youtube_id", ONLY_YT);
 const { data: videos, error: vErr } = await videoQuery;
 if (vErr) {
@@ -115,21 +163,12 @@ if (vErr) {
 console.log(APPLY ? "APPLY mode — writing changes." : "Dry run — no writes (add --apply to write).");
 for (const v of videos ?? []) {
   const rows = await fetchAllWords(v.id);
-  // Skip videos already at word granularity — avg tokens per row ≈ 1 means
-  // the source was manual per-seg captions or Whisper; rewriting them would
-  // only churn rows (and row ids) for no visual change.
-  const tokenCount = rows.reduce((a, r) => a + String(r.text ?? "").trim().split(/\s+/).filter(Boolean).length, 0);
-  const avgTokens = rows.length ? tokenCount / rows.length : 0;
-  if (rows.length && avgTokens <= 1.5) {
-    console.log(`${v.youtube_id} "${(v.title ?? "").slice(0, 50)}": already word-level (avg ${avgTokens.toFixed(2)} tokens/row) — skipped`);
-    continue;
-  }
-  const { words, dropped, retimed } = repair(rows);
-  const split = splitIntoWords(words.map((w) => ({ text: w.text, startTime: w.start, endTime: w.end })));
+  const durationSec = Number(v.duration_sec ?? NaN);
+  const { words: split, dropped, eventsRescaled, shifted } = repair(rows, durationSec);
   const text = split.map((w) => w.text).join(" ");
   console.log(
     `${v.youtube_id} "${(v.title ?? "").slice(0, 50)}": ${rows.length} → ${split.length} words ` +
-      `(dropped ${dropped} SFX/junk, retimed ${retimed}, avg ${avgTokens.toFixed(1)} tokens/row)`,
+      `(dropped ${dropped} SFX/junk, events rescaled ${eventsRescaled}, shifted ${shifted})`,
   );
   if (!APPLY || !split.length) continue;
   const { error: delErr } = await sb.from("transcript_words").delete().eq("video_id", v.id);

@@ -50,7 +50,7 @@ async function fetchWithRetry(
 
 // Deployment marker — bump on every ship. Lets callers verify which
 // revision is live without writing rows (the dedupe probe returns it).
-const FN_VERSION = 3;
+const FN_VERSION = 4;
 
 function json(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify({ fnVersion: FN_VERSION, ...body }), {
@@ -219,9 +219,27 @@ function cleanSegText(raw: unknown): string {
   return text
 }
 
-// Manual captions preferred, auto (kind=asr) second. Manual json3 segs carry
-// per-seg timings; auto-caption segs don't, so each seg gets an even slice
-// of its event span — preserving spoken order with distinct start/end times.
+// Manual captions preferred, auto (kind=asr) second. json3 segs may carry
+// tOffsetMs (word offset within the event); segs without it get an even
+// slice of the event span. The span is clamped to the gap to the next event
+// start: display durations (dDurationMs) overlap the next event, and
+// spreading over the full duration pushes this event's tail past the next
+// event's head, so ORDER BY start_time interleaves them. Spoken
+// (event/seg) order is canonical; timings are nudged monotonic at the end.
+function enforceMonotonic(words: TimedWord[]): TimedWord[] {
+  let prevEnd = -Infinity
+  for (const w of words) {
+    let s = Number(w.startTime ?? 0)
+    let e = Number(w.endTime ?? s)
+    if (!(s >= prevEnd)) s = prevEnd + 0.001
+    if (!(e > s)) e = s + 0.04
+    w.startTime = s
+    w.endTime = e
+    prevEnd = e
+  }
+  return words
+}
+
 async function wordsFromTracks(tracks: CaptionTrack[]): Promise<TimedWord[] | null> {
   const track = pickTrack(tracks)
   if (!track) return null
@@ -238,25 +256,41 @@ async function wordsFromTracks(tracks: CaptionTrack[]): Promise<TimedWord[] | nu
     const events = ((j.events ?? []) as Array<{
       tStartMs?: number
       dDurationMs?: number
-      segs?: Array<{ utf8?: string; tStartMs?: number; dDurationMs?: number }>
+      dDurMs?: number
+      segs?: Array<{ utf8?: string; tOffsetMs?: number; tStartMs?: number; dDurationMs?: number }>
     }>).filter((ev) => ev.segs?.length)
     events.forEach((ev, ei) => {
       const evStart = (ev.tStartMs ?? 0) / 1000
-      let span = (ev.dDurationMs ?? 0) / 1000
-      if (!span || !Number.isFinite(span)) {
-        const next = events.slice(ei + 1).find((e) => (e.tStartMs ?? 0) / 1000 > evStart)
-        span = next ? next.tStartMs! / 1000 - evStart : 2
-        if (!span || span <= 0 || !Number.isFinite(span)) span = 2
-      }
+      const rawSpan = ((ev.dDurationMs ?? ev.dDurMs ?? 0) as number) / 1000
+      const next = events.slice(ei + 1).find((e) => (e.tStartMs ?? 0) / 1000 > evStart)
+      const gap = next ? next.tStartMs! / 1000 - evStart : NaN
+      let span = rawSpan
+      if (!span || !Number.isFinite(span)) span = gap
+      else if (Number.isFinite(gap) && gap > 0 && gap < span) span = gap
+      if (!span || span <= 0 || !Number.isFinite(span)) span = 2
+      const evEnd = evStart + span
       const kept = (ev.segs ?? [])
         .map((seg) => ({ text: cleanSegText(seg.utf8), seg }))
         .filter((k) => k.text)
       const slice = span / Math.max(kept.length, 1)
       kept.forEach(({ text, seg }, si) => {
-        const hasOwn = Number.isFinite(seg.tStartMs) && Number.isFinite(seg.dDurationMs)
-        if (hasOwn) {
-          const start = ((ev.tStartMs ?? 0) + seg.tStartMs!) / 1000
-          words.push({ text, startTime: start, endTime: start + seg.dDurationMs! / 1000 })
+        const rawOff = seg ? (seg.tOffsetMs ?? seg.tStartMs) : undefined
+        const off = Number(rawOff ?? NaN) / 1000
+        if (Number.isFinite(off) && off >= 0 && off < span) {
+          const start = evStart + off
+          const nextOff = kept
+            .slice(si + 1)
+            .map((k) => Number(k.seg?.tOffsetMs ?? k.seg?.tStartMs ?? NaN) / 1000)
+            .find((o) => Number.isFinite(o) && o > off)
+          let end: number
+          if (seg && Number.isFinite(seg.dDurationMs) && (seg.dDurationMs as number) > 0) {
+            end = Math.min(start + (seg.dDurationMs as number) / 1000, evEnd)
+          } else {
+            end = Number.isFinite(nextOff) ? Math.min(evStart + (nextOff as number), evEnd) : evEnd
+          }
+          if (!(end > start)) end = Math.min(start + 0.4, evEnd)
+          if (!(end > start)) end = start + 0.04
+          words.push({ text, startTime: start, endTime: end })
         } else {
           words.push({
             text,
@@ -266,6 +300,7 @@ async function wordsFromTracks(tracks: CaptionTrack[]): Promise<TimedWord[] | nu
         }
       })
     })
+    enforceMonotonic(words)
     return words.length ? words : null
   } catch (e) {
     console.error("[ingest] timedtext fetch/parse failed:", e)
@@ -559,6 +594,31 @@ Deno.serve(async (req) => {
       )
     }
   }
+  // Word granularity: the transcript UI renders one clickable button per
+  // row, so multi-word segs are split with length-proportional slices
+  // (mirrors splitIntoWords in scripts/ingest-core.mjs).
+  const PUNCT_RE = /[[()\].,;:!?"'\u201c\u201d\u2019-]+/g
+  const splitWords: TimedWord[] = []
+  for (const row of words ?? []) {
+    const tokens = String(row.text ?? "").trim().split(/\s+/).filter(Boolean)
+    if (tokens.length <= 1) {
+      if (tokens.length === 1) splitWords.push(row)
+      continue
+    }
+    let end = Number(row.endTime ?? row.startTime)
+    if (!(end > row.startTime)) end = row.startTime + 0.4 * tokens.length
+    const weights = tokens.map((t) => Math.max(t.replace(PUNCT_RE, "").length, 1))
+    const total = weights.reduce((a, b) => a + b, 0)
+    const slice = (end - row.startTime) / total
+    let cursor = row.startTime
+    tokens.forEach((token, i) => {
+      const tokenEnd = row.startTime + slice * weights.slice(0, i + 1).reduce((a, b) => a + b, 0)
+      splitWords.push({ ...row, text: token, startTime: cursor, endTime: tokenEnd })
+      cursor = tokenEnd
+    })
+  }
+  enforceMonotonic(splitWords)
+  words = splitWords.length ? splitWords : words
   const transcriptText = (words ?? [])
     .map((w) => w.text)
     .join(" ")

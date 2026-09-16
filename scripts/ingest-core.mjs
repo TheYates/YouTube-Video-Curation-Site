@@ -36,6 +36,11 @@ export function extractYouTubeId(u) {
 // span proportionally to token length (spaces read faster than long words).
 // Rows that already carry their own single-word text (Whisper output, manual
 // per-seg timings) pass through untouched.
+// Punctuation stripped for length-proportional slicing (spaces read faster
+// than long words). Note: the class must NOT be negated — [^...] would keep
+// only punctuation and give every token weight ~1.
+const PUNCT_RE = /[[()\].,;:!?"'\u201c\u201d\u2019-]+/g;
+
 export function splitIntoWords(rows) {
   const out = [];
   for (const row of rows) {
@@ -45,8 +50,9 @@ export function splitIntoWords(rows) {
       continue;
     }
     const start = Number(row.startTime ?? 0);
-    const end = Number(row.endTime ?? start);
-    const weights = tokens.map((t) => Math.max(t.replace(/[^[\](),.;:!?"'\u201c\u201d\u2019]+/g, "").length, 1));
+    let end = Number(row.endTime ?? start);
+    if (!(end > start)) end = start + 0.4 * tokens.length;
+    const weights = tokens.map((t) => Math.max(t.replace(PUNCT_RE, "").length, 1));
     const total = weights.reduce((a, b) => a + b, 0);
     let cursor = start;
     const slice = (end - start) / total;
@@ -57,6 +63,25 @@ export function splitIntoWords(rows) {
     });
   }
   return out;
+}
+
+// Spoken order is canonical (insertion order = event/seg order). Timings must
+// be strictly monotonic so ORDER BY start_time never reshuffles words. Keep
+// each word's original start anchor when it already follows the previous
+// word; otherwise nudge it just past the previous end. Never moves a word
+// earlier, so a correct anchor is never disturbed.
+export function enforceMonotonic(words, epsilon = 0.001, minDur = 0.04) {
+  let prevEnd = -Infinity;
+  for (const w of words) {
+    let s = Number(w.startTime ?? 0);
+    let e = Number(w.endTime ?? s);
+    if (!(s >= prevEnd)) s = prevEnd + epsilon;
+    if (!(e > s)) e = s + minDur;
+    w.startTime = s;
+    w.endTime = e;
+    prevEnd = e;
+  }
+  return words;
 }
 
 function iso8601ToSeconds(iso) {
@@ -219,26 +244,45 @@ export async function ingestOne(url, opts = {}) {
         const events = (j.events ?? []).filter((ev) => ev.segs?.length);
         events.forEach((ev, ei) => {
           const evStart = (ev.tStartMs ?? 0) / 1000;
-          // Event span: its own duration, else the gap to the next event,
-          // else a 2s fallback. Auto-caption segs carry no per-seg timings,
-          // so each seg gets an even slice — preserving spoken order with
-          // distinct start/end times (click-to-seek + highlight need these).
-          let span = (ev.dDurationMs ?? 0) / 1000;
-          if (!span || !Number.isFinite(span)) {
-            const next = events.slice(ei + 1).find((e) => (e.tStartMs ?? 0) / 1000 > evStart);
-            span = next ? (next.tStartMs / 1000 - evStart) : 2;
-            if (!span || span <= 0 || !Number.isFinite(span)) span = 2;
-          }
+          // Event span: display durations (dDurationMs) overlap the next
+          // event, so spreading words over the full duration pushes this
+          // event's tail past the next event's head — ORDER BY start_time
+          // then interleaves them (1-2 words swapped at every boundary).
+          // Clamp the span to the gap to the next event start. Segs with
+          // tOffsetMs (YouTube's word-offset field) keep their anchors,
+          // clamped to the same span; everything else gets an even slice.
+          const rawSpan = (ev.dDurationMs ?? ev.dDurMs ?? 0) / 1000;
+          const next = events.slice(ei + 1).find((e) => (e.tStartMs ?? 0) / 1000 > evStart);
+          const gap = next ? next.tStartMs / 1000 - evStart : NaN;
+          let span = rawSpan;
+          if (!span || !Number.isFinite(span)) span = gap;
+          else if (Number.isFinite(gap) && gap > 0 && gap < span) span = gap;
+          if (!span || span <= 0 || !Number.isFinite(span)) span = 2;
+          const evEnd = evStart + span;
           const kept = ev.segs
             .map((seg) => ({ text: cleanSegText(seg.utf8), seg }))
             .filter((k) => k.text);
           const slice = span / Math.max(kept.length, 1);
           kept.forEach(({ text, seg }, si) => {
-            const hasOwn = seg && Number.isFinite(seg.tStartMs) && Number.isFinite(seg.dDurationMs);
-            if (hasOwn) {
-              // Manual captions: trust the precise per-seg timings.
-              const start = ((ev.tStartMs ?? 0) + seg.tStartMs) / 1000;
-              words.push({ text, startTime: start, endTime: start + seg.dDurationMs / 1000 });
+            // tOffsetMs = offset within the event (json3 word timing).
+            // tStartMs on a seg is accepted as a legacy alias for the same.
+            const rawOff = seg ? (seg.tOffsetMs ?? seg.tStartMs) : undefined;
+            const off = Number(rawOff ?? NaN) / 1000;
+            if (Number.isFinite(off) && off >= 0 && off < span) {
+              const start = evStart + off;
+              const nextOff = kept
+                .slice(si + 1)
+                .map((k) => Number(k.seg?.tOffsetMs ?? k.seg?.tStartMs ?? NaN) / 1000)
+                .find((o) => Number.isFinite(o) && o > off);
+              let end;
+              if (seg && Number.isFinite(seg.dDurationMs) && seg.dDurationMs > 0) {
+                end = Math.min(start + seg.dDurationMs / 1000, evEnd);
+              } else {
+                end = Number.isFinite(nextOff) ? Math.min(evStart + nextOff, evEnd) : evEnd;
+              }
+              if (!(end > start)) end = Math.min(start + 0.4, evEnd);
+              if (!(end > start)) end = start + 0.04;
+              words.push({ text, startTime: start, endTime: end });
             } else {
               words.push({
                 text,
@@ -248,6 +292,7 @@ export async function ingestOne(url, opts = {}) {
             }
           });
         });
+        enforceMonotonic(words);
       }
     }
   } catch (e) {
@@ -346,6 +391,7 @@ export async function ingestOne(url, opts = {}) {
     return { status: "failed", detail: "No transcript obtained — aborting (not writing a hollow row)." };
   }
   words = splitIntoWords(words);
+  enforceMonotonic(words);
   console.log(`transcript ok: ${words.length} words (source=${transcriptSource})`);
   const transcriptText = words.map((w) => w.text).join(" ").replace(/\s+/g, " ").trim();
 
