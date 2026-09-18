@@ -11,8 +11,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = siteUrl();
   const now = new Date();
   const entries: MetadataRoute.Sitemap = [
-    { url: `${base}/`, lastModified: now, changeFrequency: "daily", priority: 1 },
-    { url: `${base}/search`, lastModified: now, changeFrequency: "monthly", priority: 0.3 },
+    // Homepage without trailing slash to match the canonical Next renders
+    // (<link rel="canonical" href="https://<host>">). /search is deliberately
+    // excluded: the empty search page has no results and would waste crawl
+    // budget that should go to /video/* pages.
+    { url: `${base}`, lastModified: now, changeFrequency: "daily", priority: 1 },
     // Trust pages — high value for AdSense review and E-E-A-T signals.
     ...["about", "contact", "privacy", "disclosure"].map((p) => ({
       url: `${base}/${p}`,

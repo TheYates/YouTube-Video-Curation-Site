@@ -21,6 +21,18 @@ export const metadata: Metadata = {
   },
   description:
     "Hand-picked YouTube videos, transcribed and analysed. Click any word to jump to that exact moment. Search across every video ever published.",
+  // Site-wide social defaults so the homepage (and any page without its own
+  // OG tags) still emits og:/twitter: tags. No images: repo has no share
+  // asset yet — per-video pages override title/description/images. When a
+  // 1200x630 /og-default.png lands in web/public, add it here.
+  openGraph: {
+    type: "website",
+    siteName: "Signal",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

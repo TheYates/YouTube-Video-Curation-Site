@@ -6,6 +6,9 @@ import SearchForm from "../../../components/search-form";
 export const metadata: Metadata = {
   title: "Search Transcripts",
   description: "Search every word of every transcript on Signal.",
+  // Thin utility page (empty without ?q=): keep links followed but spend
+  // Google's crawl/index budget on /video/* instead of empty searches.
+  robots: { index: false, follow: true },
 };
 
 function formatTime(seconds: number) {
