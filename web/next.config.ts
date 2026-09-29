@@ -12,6 +12,17 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "**.supabase.co" },
     ],
   },
+  async headers() {
+    return [
+      {
+        // /admin is behind middleware and already redirects anonymous callers,
+        // but a redirect target can still be crawled. Say noindex explicitly
+        // so the panel never becomes indexable noise.
+        source: "/admin/:path*",
+        headers: [{ key: "X-Robots-Tag", value: "noindex" }],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

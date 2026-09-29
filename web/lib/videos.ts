@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getServerSupabase } from "./supabase-server";
+import { getPublicSupabase } from "./supabase-public";
 import type { SearchHit, Video } from "./types";
 import { scoreRelated, searchInVideos } from "./video-utils";
 
@@ -158,7 +158,7 @@ async function attachTranscripts(
 }
 
 export async function getVideoCards(category = "All"): Promise<Video[]> {
-  const sb = await getServerSupabase();
+  const sb = getPublicSupabase();
   let query = sb
     .from("videos")
     .select(CARD_SELECT)
@@ -170,7 +170,7 @@ export async function getVideoCards(category = "All"): Promise<Video[]> {
 }
 
 export async function getVideos(category = "All"): Promise<Video[]> {
-  const sb = await getServerSupabase();
+  const sb = getPublicSupabase();
   let query = sb
     .from("videos")
     .select(FULL_VIDEO_SELECT)
@@ -185,7 +185,7 @@ export async function getVideos(category = "All"): Promise<Video[]> {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function getVideo(slugOrId: string): Promise<Video | null> {
-  const sb = await getServerSupabase();
+  const sb = getPublicSupabase();
   // Slug-first; the UUID fallback keeps old /video/<uuid> links working
   // (the page permanently redirects them to the slug). The UUID regex guard
   // avoids a PostgREST 400 comparing uuid = <non-uuid text>.
@@ -221,11 +221,20 @@ export interface VideoListing {
 // Minimal slug list for sitemap.xml — one cheap query, no transcripts.
 // (The old sitemap fetched full videos incl. every word and timed out
 // Googlebot on cold starts.)
+//
+// Rows without transcript_text are skipped: the ingest pipeline sets it to
+// null when captions were unavailable, and those pages render as a title, a
+// thumbnail and an empty transcript — exactly the near-empty URLs that earn a
+// "Crawled - currently not indexed" verdict. They stay reachable from the
+// feed, search and related lists; they just aren't advertised for crawling.
+// The filter is applied server-side so the transcript text itself is never
+// transferred.
 export async function getVideoListings(): Promise<VideoListing[]> {
-  const sb = await getServerSupabase();
+  const sb = getPublicSupabase();
   const { data, error } = await sb
     .from("videos")
     .select("id,slug,published_at")
+    .not("transcript_text", "is", null)
     .order("published_at", { ascending: false })
     .limit(5000);
   if (error) throw error;
@@ -237,7 +246,7 @@ export async function getVideoListings(): Promise<VideoListing[]> {
 }
 
 export async function getCategories(): Promise<string[]> {
-  const sb = await getServerSupabase();
+  const sb = getPublicSupabase();
   const { data, error } = await sb.from("videos").select("category").limit(5000);
   if (error) throw error;
   const uniq = Array.from(
@@ -255,7 +264,7 @@ export const DEFAULT_MIN_CATEGORY_VIDEOS = 3;
 // direct URL, search, and related videos.
 export async function getMinCategoryVideos(): Promise<number> {
   try {
-    const sb = await getServerSupabase();
+    const sb = getPublicSupabase();
     const { data, error } = await sb
       .from("app_settings")
       .select("value")
@@ -270,7 +279,7 @@ export async function getMinCategoryVideos(): Promise<number> {
 }
 
 export async function getPublicCategories(): Promise<string[]> {
-  const sb = await getServerSupabase();
+  const sb = getPublicSupabase();
   const [catRes, threshold] = await Promise.all([
     sb.from("videos").select("category").limit(5000),
     getMinCategoryVideos(),
@@ -288,7 +297,7 @@ export async function getPublicCategories(): Promise<string[]> {
 }
 
 export async function searchVideos(query: string): Promise<SearchHit[]> {
-  const sb = await getServerSupabase();
+  const sb = getPublicSupabase();
   // Server-side candidate filter: full-text over title/summary/transcript.
   const { data: idRows, error: idError } = await sb
     .from("videos")
@@ -308,7 +317,7 @@ export async function searchVideos(query: string): Promise<SearchHit[]> {
 }
 
 export async function getRelatedVideos(video: Video): Promise<Video[]> {
-  const sb = await getServerSupabase();
+  const sb = getPublicSupabase();
   // Card columns, one query: scoring needs only tags/category.
   // (Used to fetch the whole table WITH full transcripts to discard all
   // but 3 — N queries for 3 cards.)

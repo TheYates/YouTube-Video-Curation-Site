@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import type { Video } from "../lib/types";
+import type { TranscriptPayload } from "../lib/transcript-payload";
 import { useYouTubePlayer } from "../hooks/use-youtube-player";
 import { logPageView } from "../lib/log-view";
 import TranscriptPane from "./transcript-pane";
@@ -20,12 +21,15 @@ function formatDate(dateStr: string) {
   });
 }
 
+// `video` deliberately arrives without its transcript: the full word list is
+// passed as a compact payload instead, so it isn't serialized twice (see
+// lib/transcript-payload.ts).
 export default function VideoDetail({
   video,
-  tParam,
+  transcript,
 }: {
-  video: Video;
-  tParam: number;
+  video: Omit<Video, "transcript">;
+  transcript: TranscriptPayload;
 }) {
   const playerId = useId().replace(/:/g, "");
   const playerContainerId = `yt-player-${playerId}`;
@@ -49,12 +53,17 @@ export default function VideoDetail({
     }
   }, [isReady, playAt]);
 
+  // ?t=<seconds> deep links are read on the client rather than from the page's
+  // searchParams prop: awaiting searchParams in the server component opts the
+  // whole route into dynamic rendering, which disables ISR for every video
+  // page. Reading location here keeps the HTML static and the seek working.
   useEffect(() => {
-    if (tParam > 0) {
-      pendingSeekRef.current = tParam;
+    const t = Number(new URLSearchParams(window.location.search).get("t") ?? 0) || 0;
+    if (t > 0) {
+      pendingSeekRef.current = t;
       setPlayerOpen(true);
     }
-  }, [tParam]);
+  }, []);
 
   function handleWordClick(seconds: number) {
     if (!playerOpen) {
@@ -190,7 +199,7 @@ export default function VideoDetail({
             </h3>
             <div className="relative pl-0 sm:pl-10">
               <TranscriptPane
-                transcript={video.transcript}
+                payload={transcript}
                 chapters={video.chapters}
                 currentTime={currentTime}
                 isActive={isActive}

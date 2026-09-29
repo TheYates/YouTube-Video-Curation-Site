@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { getPublicCategories, getVideoCards } from "../../lib/videos";
-import CategoryTabs from "../../components/category-tabs";
-import VideoCard from "../../components/video-card";
+import VideoFeed from "../../components/video-feed";
 import AdSlot from "../../components/ad-slot";
 
 export const revalidate = 300;
@@ -13,20 +12,37 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
 };
 
-export default async function Home({
-  searchParams,
-}: {
-  searchParams: Promise<{ category?: string }>;
-}) {
-  const { category } = await searchParams;
+export default async function Home() {
+  // No searchParams prop: awaiting it would opt this route into dynamic
+  // rendering, which is what kept the page that links every video out of the
+  // CDN cache. Category filtering runs client-side in VideoFeed instead.
+  // "All" (not an empty default) so crawlers never get a blank feed.
   const [allVideos, cats] = await Promise.all([getVideoCards("All"), getPublicCategories()]);
-  // No param → show everything (an empty default would serve crawlers a blank feed).
-  const activeCategory = category && cats.includes(category) ? category : "All";
-  const filtered =
-    activeCategory === "All" ? allVideos : allVideos.filter((v) => v.category === activeCategory);
+
+  // ItemList tells Google these links are one curated collection with an
+  // explicit order, rather than a loose set of links on the homepage. Omitted
+  // when no site URL is configured.
+  const siteBase = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
+  const itemListJsonLd = siteBase
+    ? {
+        "@context": "https://schema.org",
+        "@type": "ItemList",
+        itemListElement: allVideos.map((v, i) => ({
+          "@type": "ListItem",
+          position: i + 1,
+          url: `${siteBase}/video/${v.slug}`,
+        })),
+      }
+    : null;
 
   return (
     <main className="page-enter mx-auto max-w-5xl px-6 py-12">
+      {itemListJsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListJsonLd) }}
+        />
+      )}
       <div className="mb-12 border-b border-(--color-border) pb-12">
         <p className="mb-3 font-mono text-xs uppercase tracking-widest text-(--color-accent)">
           Curated Intelligence
@@ -50,19 +66,7 @@ export default async function Home({
 
       <AdSlot size="leaderboard" />
 
-      <div className="mb-8">
-        <CategoryTabs categories={cats} active={activeCategory} />
-      </div>
-
-      <div>
-        {filtered.length === 0 ? (
-          <p className="py-16 text-center text-(--color-muted-foreground)">
-            No videos in this category yet.
-          </p>
-        ) : (
-          filtered.map((video) => <VideoCard key={video.id} video={video} />)
-        )}
-      </div>
+      <VideoFeed videos={allVideos} categories={cats} />
     </main>
   );
 }

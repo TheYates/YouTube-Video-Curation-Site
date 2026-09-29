@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { cache } from "react";
 import { notFound, permanentRedirect } from "next/navigation";
-import { getRelatedVideos, getVideo } from "../../../../lib/videos";
+import { getRelatedVideos, getVideo, getVideoListings } from "../../../../lib/videos";
+import { buildTranscriptPayload } from "../../../../lib/transcript-payload";
 import VideoDetail from "../../../../components/video-detail";
 import RelatedVideos from "../../../../components/related-videos";
 
@@ -10,6 +11,24 @@ export const revalidate = 3600;
 // Metadata and page run in parallel for the same slug — dedup the fetch so
 // the video + transcript load once, not twice.
 const getCachedVideo = cache(getVideo);
+
+// This is what makes the route ISR-capable. Without it Next classifies
+// /video/[slug] as fully dynamic and ignores `revalidate` entirely — every
+// request re-rendered on the server and answered `cache-control: no-store`,
+// which is what made cold pages so expensive for Googlebot. Listing paths here
+// flips the route to prerendered + ISR, and slugs that only appear after this
+// build are still rendered once and then served from the ISR cache (verified
+// against `next start`).
+//
+// getVideoListings() already excludes rows with no transcript, so only pages
+// with real content are prerendered, and the cap keeps build time bounded as
+// the catalogue grows.
+const PRERENDER_LIMIT = 100;
+
+export async function generateStaticParams() {
+  const listings = await getVideoListings().catch(() => []);
+  return listings.slice(0, PRERENDER_LIMIT).map((v) => ({ slug: v.slug }));
+}
 
 export async function generateMetadata({
   params,
@@ -46,23 +65,32 @@ export async function generateMetadata({
 
 export default async function VideoPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ t?: string }>;
 }) {
   const { slug } = await params;
-  const { t } = await searchParams;
   const video = await getVideo(slug).catch(() => null);
   if (!video) notFound();
   // Old /video/<uuid> links (and any non-canonical slug) permanently point
   // at the frozen slug — keeps shared links and Google's index intact.
+  //
+  // Deliberately no searchParams here: awaiting it in a server component opts
+  // the route into dynamic rendering, which silently voids `revalidate` above
+  // and makes every Googlebot hit a cold server render + cold Supabase query.
+  // The cost is that a legacy /video/<uuid>?t=300 link loses its seek on the
+  // redirect — the video still loads. ?t= on a canonical URL is read
+  // client-side in VideoDetail.
   if (slug !== video.slug) {
-    permanentRedirect(`/video/${video.slug}${t ? `?t=${t}` : ""}`);
+    permanentRedirect(`/video/${video.slug}`);
   }
 
-  const tParam = Number(t ?? 0) || 0;
   const related = await getRelatedVideos(video).catch(() => []);
+
+  // Split the transcript off the video handed to the client component: word
+  // text ships once (as compact paragraph text) instead of twice, and the
+  // per-word {startTime,endTime} objects never reach the flight payload.
+  const { transcript, ...videoMeta } = video;
+  const transcriptPayload = buildTranscriptPayload(transcript);
 
   // VideoObject structured data: makes pages eligible for video rich
   // results (the "Discovered videos" track in Search Console).
@@ -81,13 +109,39 @@ export default async function VideoPage({
     author: { "@type": "Person", name: video.channelName },
   };
 
+  // Breadcrumbs give Google an explicit parent path (Home → this video)
+  // instead of guessing at site hierarchy from the feed alone. Omitted when
+  // no site URL is configured, since a relative `item` is not useful here.
+  const siteBase = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
+  const breadcrumbJsonLd = siteBase
+    ? {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "Home", item: siteBase },
+          {
+            "@type": "ListItem",
+            position: 2,
+            name: video.title,
+            item: `${siteBase}/video/${video.slug}`,
+          },
+        ],
+      }
+    : null;
+
   return (
     <>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(videoJsonLd) }}
       />
-      <VideoDetail video={video} tParam={tParam} />
+      {breadcrumbJsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        />
+      )}
+      <VideoDetail video={videoMeta} transcript={transcriptPayload} />
       {related.length > 0 && (
         <div className="mx-auto max-w-5xl px-6">
           <div className="mt-16 border-t border-(--color-border) pt-10 pb-16">

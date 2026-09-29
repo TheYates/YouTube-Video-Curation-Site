@@ -9,30 +9,30 @@ function siteUrl(): string {
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = siteUrl();
-  const now = new Date();
   const entries: MetadataRoute.Sitemap = [
     // Homepage without trailing slash to match the canonical Next renders
     // (<link rel="canonical" href="https://<host>">). /search is deliberately
     // excluded: the empty search page has no results and would waste crawl
     // budget that should go to /video/* pages.
-    { url: `${base}`, lastModified: now, changeFrequency: "daily", priority: 1 },
-    // Trust pages — high value for AdSense review and E-E-A-T signals.
-    ...["about", "contact", "privacy", "disclosure"].map((p) => ({
-      url: `${base}/${p}`,
-      lastModified: now,
-      changeFrequency: "yearly" as const,
-      priority: 0.5,
-    })),
+    { url: `${base}` },
+    // Trust pages — high value for AdSense review and E-E-A-T signals. No
+    // lastModified: they aren't touched on any schedule, and a timestamp that
+    // changes on every render teaches Google to distrust the field.
+    ...["about", "contact", "privacy", "disclosure"].map((p) => ({ url: `${base}/${p}` })),
   ];
+  // changeFrequency and priority are omitted throughout: Google ignores both.
+  // lastModified is the only hint it acts on, so it appears only where there
+  // is a real edit date.
   try {
     const videos = await getVideoListings();
-    for (const v of videos) {
+    for (const [i, v] of videos.entries()) {
       entries.push({
         url: `${base}/video/${v.slug}`,
         lastModified: new Date(v.publishedAt),
-        changeFrequency: "monthly",
-        priority: 0.8,
       });
+      // The feed changes when a new video lands, so the homepage borrows the
+      // newest publish date (listings come back newest-first).
+      if (i === 0) entries[0].lastModified = new Date(v.publishedAt);
     }
   } catch {
     // Supabase unreachable at build time — sitemap still emits static routes.
