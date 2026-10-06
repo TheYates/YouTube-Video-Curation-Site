@@ -1,11 +1,9 @@
 import type { MetadataRoute } from "next";
-import { getVideoListings } from "../lib/videos";
+import { getPublicCategories, getVideoListings } from "../lib/videos";
+import { categorySlug } from "../lib/category";
+import { siteUrl } from "../lib/site-url";
 
 export const revalidate = 3600;
-
-function siteUrl(): string {
-  return (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
-}
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = siteUrl();
@@ -23,19 +21,45 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // changeFrequency and priority are omitted throughout: Google ignores both.
   // lastModified is the only hint it acts on, so it appears only where there
   // is a real edit date.
-  try {
-    const videos = await getVideoListings();
-    for (const [i, v] of videos.entries()) {
-      entries.push({
-        url: `${base}/video/${v.slug}`,
-        lastModified: new Date(v.publishedAt),
-      });
-      // The feed changes when a new video lands, so the homepage borrows the
-      // newest publish date (listings come back newest-first).
-      if (i === 0) entries[0].lastModified = new Date(v.publishedAt);
-    }
-  } catch {
-    // Supabase unreachable at build time — sitemap still emits static routes.
+
+  // Caught per call rather than around the whole block: a categories outage
+  // shouldn't also cost us every video URL.
+  const [videos, categories] = await Promise.all([
+    getVideoListings().catch(() => []),
+    getPublicCategories().catch(() => [] as string[]),
+  ]);
+
+  for (const [i, v] of videos.entries()) {
+    entries.push({
+      url: `${base}/video/${v.slug}`,
+      lastModified: new Date(v.publishedAt),
+    });
+    // The feed changes when a new video lands, so the homepage borrows the
+    // newest publish date (listings come back newest-first).
+    if (i === 0) entries[0].lastModified = new Date(v.publishedAt);
   }
+
+  // Category hubs — the crawlable landing pages that replaced the client-side
+  // filter on the homepage. lastModified borrows the newest video in the
+  // category, because adding a video is the only thing that actually changes a
+  // hub; anything else would be a fabricated timestamp.
+  //
+  // Only categories above the curator's minimum-size threshold are advertised
+  // (getPublicCategories applies it), which matches the nav: thin sections stay
+  // reachable but aren't put forward.
+  const newestByCategory = new Map<string, string>();
+  for (const v of videos) {
+    const current = newestByCategory.get(v.category);
+    if (!current || v.publishedAt > current) newestByCategory.set(v.category, v.publishedAt);
+  }
+  for (const category of categories) {
+    if (category === "All") continue;
+    const lastModified = newestByCategory.get(category);
+    entries.push({
+      url: `${base}/category/${categorySlug(category)}`,
+      ...(lastModified ? { lastModified: new Date(lastModified) } : {}),
+    });
+  }
+
   return entries;
 }

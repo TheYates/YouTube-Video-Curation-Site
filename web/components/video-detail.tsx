@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import type { Video } from "../lib/types";
 import type { TranscriptPayload } from "../lib/transcript-payload";
+import { categorySlug } from "../lib/category";
 import { useYouTubePlayer } from "../hooks/use-youtube-player";
 import { logPageView } from "../lib/log-view";
 import TranscriptPane from "./transcript-pane";
@@ -147,7 +148,14 @@ export default function VideoDetail({
       {/* Article header — server-rendered for SEO; hydrated for share buttons */}
       <div className="mb-10 border-b border-(--color-border) pb-10">
         <div className="mb-3 flex items-center gap-3">
-          <span className="font-mono text-xs uppercase tracking-widest text-(--color-accent)">{video.category}</span>
+          {/* Links up to the category hub: every video page is a crawl path
+              into /category/*, which is what makes the hubs discoverable. */}
+          <Link
+            href={`/category/${categorySlug(video.category)}`}
+            className="font-mono text-xs uppercase tracking-widest text-(--color-accent) transition-opacity hover:opacity-70"
+          >
+            {video.category}
+          </Link>
           <span className="text-(--color-border)">·</span>
           <span
             className="font-mono text-xs text-(--color-muted-foreground)"

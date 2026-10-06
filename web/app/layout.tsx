@@ -39,6 +39,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
       <body className="min-h-screen bg-(--color-background) text-(--color-foreground)">
+        {/* Feed autodiscovery. Deliberately a hoisted element rather than
+            metadata `alternates.types`: a page that sets its own `alternates`
+            (canonical) replaces the layout's whole `alternates` object, which
+            silently dropped this tag from every page that has a canonical. */}
+        <link
+          rel="alternate"
+          type="application/rss+xml"
+          title="Signal — new curations"
+          href="/feed.xml"
+        />
         {children}
         <Toaster
           position="bottom-right"

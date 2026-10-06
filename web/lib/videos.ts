@@ -216,6 +216,7 @@ export interface VideoListing {
   id: string;
   slug: string;
   publishedAt: string;
+  category: string;
 }
 
 // Minimal slug list for sitemap.xml — one cheap query, no transcripts.
@@ -233,15 +234,20 @@ export async function getVideoListings(): Promise<VideoListing[]> {
   const sb = getPublicSupabase();
   const { data, error } = await sb
     .from("videos")
-    .select("id,slug,published_at")
+    // `category` rides along so the sitemap can date each category hub from its
+    // newest video without a second query.
+    .select("id,slug,published_at,category")
     .not("transcript_text", "is", null)
     .order("published_at", { ascending: false })
     .limit(5000);
   if (error) throw error;
-  return ((data ?? []) as { id: string; slug: string; published_at: string }[]).map((r) => ({
+  return (
+    (data ?? []) as { id: string; slug: string; published_at: string; category: string }[]
+  ).map((r) => ({
     id: r.id,
     slug: r.slug,
     publishedAt: r.published_at,
+    category: r.category,
   }));
 }
 

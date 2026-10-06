@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { categorySlug } from "../lib/category";
 
 // Controlled component: VideoFeed owns the active category so the homepage can
-// stay statically rendered. Hrefs are still real (middle-click / open-in-new-
-// tab lands on the static homepage, which re-applies the filter on mount); the
-// plain left-click is intercepted to filter in place.
+// stay statically rendered, and a plain left-click is intercepted to filter in
+// place. The href still points at the real category hub page, which is what
+// lets crawlers discover /category/* from the homepage — the filtered view
+// exists only in the DOM and exposes no new URL to follow.
 export default function CategoryTabs({
   categories,
   active,
@@ -18,7 +20,7 @@ export default function CategoryTabs({
   return (
     <div className="flex gap-1 overflow-x-auto pb-px">
       {categories.map((cat) => {
-        const href = cat === "All" ? "/" : `/?category=${encodeURIComponent(cat)}`;
+        const href = cat === "All" ? "/" : `/category/${categorySlug(cat)}`;
         return (
           <Link
             key={cat}
