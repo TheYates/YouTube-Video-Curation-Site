@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Contact",
-  description: "How to reach the human behind Signal.",
+  description: "How to reach the human behind Curataur.",
 };
 
 const EMAIL = "hhh.3nree@gmail.com";

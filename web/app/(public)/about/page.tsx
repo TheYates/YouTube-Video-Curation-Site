@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "About",
   description:
-    "Who runs Signal, how every video is curated, and why this library exists.",
+    "Who runs Curataur, how every video is curated, and why this library exists.",
 };
 
 export default function AboutPage() {
@@ -19,7 +19,7 @@ export default function AboutPage() {
 
       <div className="mt-8 space-y-5 text-base leading-relaxed text-(--color-foreground)">
         <p>
-          Signal is run by Henri, a writer and obsessive learner who started this project 
+          Curataur is run by Henri, a writer and obsessive learner who started this project 
           to share the best ideas buried inside long-form videos. 
           I wanted a place where the real takeaways surfaced — without the noise or clickbait. 
           Find me on facebook at @henrithelayup — that’s the fastest way to reach a person, not a form.

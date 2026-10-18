@@ -3,7 +3,7 @@ import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Disclosure",
-  description: "How Signal handles affiliate links and advertising, in plain language.",
+  description: "How Curataur handles affiliate links and advertising, in plain language.",
 };
 
 export default function DisclosurePage() {
@@ -22,7 +22,7 @@ export default function DisclosurePage() {
           <p>
             Some articles include resource links (books, tools, courses) marked with
             labels like “Affiliate link.” If you buy through one, the retailer may
-            pay Signal a small commission — at no extra cost to you.
+            pay Curataur a small commission — at no extra cost to you.
           </p>
           <p>
             Commissions never decide what gets curated. A video earns its page by
@@ -34,7 +34,7 @@ export default function DisclosurePage() {
         <section className="space-y-2">
           <h2 className="font-display text-xl">Advertising</h2>
           <p>
-            Signal currently runs no ads and no sponsored placements. If that
+            Curataur currently runs no ads and no sponsored placements. If that
             changes, sponsored content will be labeled as such, on this page and
             next to the content itself — never disguised as curation.
           </p>

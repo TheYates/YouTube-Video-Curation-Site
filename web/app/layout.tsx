@@ -16,8 +16,8 @@ export const metadata: Metadata = {
   // Absolute base so OG/canonical tags are full URLs in production.
   ...(siteUrl ? { metadataBase: new URL(siteUrl) } : {}),
   title: {
-    default: "Signal — the best ideas, word for word",
-    template: "%s — Signal",
+    default: "Curataur — the best ideas, word for word",
+    template: "%s — Curataur",
   },
   description:
     "Hand-picked YouTube videos, transcribed and analysed. Click any word to jump to that exact moment. Search across every video ever published.",
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   // 1200x630 /og-default.png lands in web/public, add it here.
   openGraph: {
     type: "website",
-    siteName: "Signal",
+    siteName: "Curataur",
     locale: "en_US",
   },
   twitter: {
@@ -46,7 +46,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link
           rel="alternate"
           type="application/rss+xml"
-          title="Signal — new curations"
+          title="Curataur — new curations"
           href="/feed.xml"
         />
         {children}

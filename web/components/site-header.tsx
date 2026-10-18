@@ -42,7 +42,7 @@ export default function SiteHeader() {
       <div className="mx-auto flex max-w-5xl items-center gap-4 px-6 py-4">
         <Link href="/" className="shrink-0">
           <span className="font-display text-xl font-normal tracking-tight text-(--color-foreground)">
-            Signal<span className="text-(--color-accent)">.</span>
+            Curataur<span className="text-(--color-accent)">.</span>
           </span>
         </Link>
 

@@ -159,7 +159,7 @@ export default function VideoDetail({
           <span className="text-(--color-border)">·</span>
           <span
             className="font-mono text-xs text-(--color-muted-foreground)"
-            title="Original YouTube upload date — Signal surfaces timeless ideas, not just news"
+            title="Original YouTube upload date — Curataur surfaces timeless ideas, not just news"
           >
             Originally uploaded {formatDate(video.publishedAt)}
           </span>

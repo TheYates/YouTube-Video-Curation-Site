@@ -12,7 +12,7 @@ export const revalidate = 900;
 // on every poll.
 const FEED_LIMIT = 50;
 
-const FEED_TITLE = "Signal — the best ideas, word for word";
+const FEED_TITLE = "Curataur — the best ideas, word for word";
 const FEED_DESCRIPTION =
   "Hand-picked YouTube videos, transcribed and analysed. Click any word in a transcript to jump to that exact moment.";
 

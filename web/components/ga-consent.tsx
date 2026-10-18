@@ -89,7 +89,7 @@ export default function GaConsent() {
               A quick ask
             </p>
             <p className="mt-2 text-sm leading-relaxed text-(--color-foreground)">
-              Signal uses privacy-friendly analytics (Vercel) plus Google Analytics
+              Curataur uses privacy-friendly analytics (Vercel) plus Google Analytics
               to see which videos get read. Allow analytics cookies?
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-3">

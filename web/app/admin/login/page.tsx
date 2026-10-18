@@ -110,7 +110,7 @@ export default function AdminLoginPage() {
       >
         <div className="text-center space-y-1">
           <p className="font-display text-2xl" style={{ color: "var(--color-foreground)" }}>
-            Signal<span style={{ color: "var(--color-accent)" }}>.</span>
+            Curataur<span style={{ color: "var(--color-accent)" }}>.</span>
           </p>
           <p
             className="font-mono text-[10px] uppercase tracking-widest"

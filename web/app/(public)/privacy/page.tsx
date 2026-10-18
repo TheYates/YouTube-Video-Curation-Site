@@ -4,7 +4,7 @@ import CookieSettingsButton from "../../../components/cookie-settings-button";
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
-  description: "What data Signal collects, what YouTube embeds collect, and your choices.",
+  description: "What data Curataur collects, what YouTube embeds collect, and your choices.",
 };
 
 export default function PrivacyPage() {
@@ -24,12 +24,12 @@ export default function PrivacyPage() {
         <section className="space-y-2">
           <h2 className="font-display text-xl">What we collect</h2>
           <p>
-            Almost nothing. Signal keeps anonymous, aggregate page-view counts so the
+            Almost nothing. Curataur keeps anonymous, aggregate page-view counts so the
             curator can see which videos get read. These contain no names, no emails,
             no accounts, and nothing that identifies you personally.
           </p>
           <p>
-            There are no user accounts on Signal, and the newsletter signup is
+            There are no user accounts on Curataur, and the newsletter signup is
             currently disabled — so we hold no email addresses and no subscriber
             list. If that ever changes, this page will say so first.
           </p>
@@ -38,7 +38,7 @@ export default function PrivacyPage() {
         <section className="space-y-2">
           <h2 className="font-display text-xl">Analytics</h2>
           <p>
-            Signal uses Vercel Web Analytics (privacy-friendly, cookieless) and,
+            Curataur uses Vercel Web Analytics (privacy-friendly, cookieless) and,
             only with your consent, Google Analytics 4 to see which videos get
             read in aggregate. Google Analytics sets cookies, collects device
             and usage data, and processes it under{" "}
@@ -76,14 +76,14 @@ export default function PrivacyPage() {
             >
               Google’s Privacy Policy
             </a>{" "}
-            — that traffic never touches Signal’s servers.
+            — that traffic never touches Curataur’s servers.
           </p>
         </section>
 
         <section className="space-y-2">
           <h2 className="font-display text-xl">Advertising</h2>
           <p>
-            Signal currently shows no ads and sets no advertising cookies beyond
+            Curataur currently shows no ads and sets no advertising cookies beyond
             the consent-gated analytics above. If advertising (such as Google
             AdSense) is added in the future, ad vendors may use cookies to serve
             relevant ads, and this policy will be updated to name them before

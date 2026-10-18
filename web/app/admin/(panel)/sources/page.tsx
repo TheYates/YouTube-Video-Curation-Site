@@ -294,7 +294,7 @@ export default function AdminSourcesPage() {
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="One line — why it's good for Signal"
+              placeholder="One line — why it's good for Curataur"
               className="rounded-sm border px-3 py-2.5 text-sm outline-none transition-colors focus:border-[var(--color-accent)]"
               style={inputBase}
             />

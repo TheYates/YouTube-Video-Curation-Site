@@ -160,7 +160,7 @@ export default function AdminPanelLayout({ children }: { children: React.ReactNo
           style={{ borderColor: "var(--color-border)", height: 80 }}
         >
           <Link href="/" className="font-display text-lg leading-none" style={{ color: "var(--color-foreground)" }}>
-            Signal<span style={{ color: "var(--color-accent)" }}>.</span>
+            Curataur<span style={{ color: "var(--color-accent)" }}>.</span>
           </Link>
           <span
             className="font-mono text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded-sm w-fit"

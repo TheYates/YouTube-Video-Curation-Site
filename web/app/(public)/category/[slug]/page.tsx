@@ -49,7 +49,7 @@ export async function generateMetadata({
     description,
     alternates: { canonical: `/category/${slug}` },
     openGraph: {
-      title: `${category} videos — Signal`,
+      title: `${category} videos — Curataur`,
       description,
       type: "website",
     },

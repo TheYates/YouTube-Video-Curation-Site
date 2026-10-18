@@ -13,7 +13,7 @@ export default function SiteFooter() {
     <footer className="border-t border-(--color-border)">
       <div className="mx-auto flex max-w-5xl flex-col gap-3 px-6 py-8 sm:flex-row sm:items-center sm:justify-between">
         <p className="font-display text-base" style={{ color: "var(--color-foreground)" }}>
-          Signal<span style={{ color: "var(--color-accent)" }}>.</span>
+          Curataur<span style={{ color: "var(--color-accent)" }}>.</span>
         </p>
         <nav className="flex flex-wrap items-center gap-x-5 gap-y-2">
           {LINKS.map((l) => (
