@@ -19,6 +19,18 @@ export function websiteId(base = siteUrl()): string {
   return `${base}/#website`;
 }
 
+// The curator — the person who runs the site and writes each page. Distinct
+// from the source channel, which is the *video's* author. One @id so the
+// site-wide graph and every per-video WebPage node point at the same entity.
+export function personId(base = siteUrl()): string {
+  return `${base}/#person`;
+}
+
+export const CURATOR = {
+  name: "Henri",
+  url: "https://www.facebook.com/henrithelayup",
+};
+
 // JSON for embedding inside <script>. JSON.stringify leaves "<" and the JS
 // line separators intact, so a title containing "</script>" could close the
 // tag early. Escaping them keeps the payload inert.
@@ -57,6 +69,16 @@ export function siteJsonLd() {
           target: `${base}/search?q={search_term_string}`,
           "query-input": "required name=search_term_string",
         },
+      },
+      {
+        // Declaring the curator once, site-wide, is what lets every video page
+        // name a real author (E-E-A-T) without repeating the node 69 times.
+        "@type": "Person",
+        "@id": personId(base),
+        name: CURATOR.name,
+        url: CURATOR.url,
+        sameAs: [CURATOR.url],
+        worksFor: { "@id": organizationId(base) },
       },
     ],
   };
@@ -121,9 +143,25 @@ export function videoJsonLd(video: Video, base = siteUrl()) {
         embedUrl: `https://www.youtube.com/embed/${video.youtubeId}`,
         contentUrl: `https://www.youtube.com/watch?v=${video.youtubeId}`,
         author: { "@type": "Person", name: video.channelName },
+        // The channel made the video; the curator published this page about it.
+        contributor: { "@id": personId(base) },
         publisher: { "@id": organizationId(base) },
         isPartOf: { "@id": websiteId(base) },
         ...(hasPart ? { hasPart } : {}),
+      },
+      {
+        // The page itself, authored by the curator, with the VideoObject as its
+        // main entity. This is what gives Google a Person (not the channel) to
+        // attribute the article to, and binds the page to the breadcrumb trail.
+        "@type": "WebPage",
+        "@id": `${pageUrl}#webpage`,
+        url: pageUrl,
+        name: video.title,
+        isPartOf: { "@id": websiteId(base) },
+        author: { "@id": personId(base) },
+        mainEntity: { "@id": `${pageUrl}#video` },
+        breadcrumb: { "@id": `${pageUrl}#breadcrumb` },
+        primaryImageOfPage: { "@type": "ImageObject", url: video.thumbnailUrl },
       },
       {
         "@type": "BreadcrumbList",

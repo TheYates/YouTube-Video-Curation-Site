@@ -11,6 +11,12 @@
 // Consumed by next.config.ts `redirects()` — a permanent (308) redirect,
 // which Google treats the same as a 301 for ranking purposes.
 export const VIDEO_SLUG_REDIRECTS: Record<string, string> = {
+  // Duplicate-content merge (2026-10): two rows curated the same video topic.
+  // The deeper page (4,583 words) absorbed the thinner page's clean URL; the
+  // thinner row was removed (scripts/merge-duplicates.mjs). The old "-2" URL
+  // was live and indexed, so it points at the surviving page.
+  "why-desert-people-wear-more-clothes-in-extreme-heat-2":
+    "why-desert-people-wear-more-clothes-in-extreme-heat",
   "exposing-a-global-ai-slop-empire-ruining-the-internet-for-pr":
     "exposing-a-global-ai-slop-empire-ruining-the-internet-for-profit",
   "the-rise-and-fall-of-realplayer-media-player-on-every-pc-tha":

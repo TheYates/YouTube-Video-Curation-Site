@@ -426,7 +426,8 @@ export async function ingestOne(url, opts = {}) {
   const prompt =
     `Video: "${sn.title}" by ${sn.channelTitle}.\n\nTranscript (may be truncated):\n` +
     `${transcriptText.slice(0, 12000)}\n\nReturn JSON: { "summary": "2-3 sentence editorial summary", ` +
-    `"takeaways": ["4-5 crisp bullets"], "chapters": [{ "title": "...", "startTime": <seconds>, ` +
+    `"takeaways": ["4-5 crisp bullets"], "tags": ["3-6 lowercase topical tags"], ` +
+    `"chapters": [{ "title": "...", "startTime": <seconds>, ` +
     `"description": "..." }] } with 3-5 chapters spread across the video.`;
   let ai = null;
   for (const model of CHAT_MODELS) {
@@ -452,6 +453,11 @@ export async function ingestOne(url, opts = {}) {
       ai = {
         summary: String(parsed.summary ?? ""),
         takeaways: Array.isArray(parsed.takeaways) ? parsed.takeaways.map(String).slice(0, 6) : [],
+        // Drives related-video scoring and the tag chips; empty arrays here
+        // used to make every page in a category show the same related block.
+        tags: Array.isArray(parsed.tags)
+          ? parsed.tags.map((t) => String(t).toLowerCase().trim()).filter(Boolean).slice(0, 6)
+          : [],
         chapters: Array.isArray(parsed.chapters)
           ? parsed.chapters.slice(0, 8).map((c) => ({
               title: String(c.title ?? "Chapter"),
@@ -504,7 +510,7 @@ export async function ingestOne(url, opts = {}) {
       thumbnail_url: thumb,
       summary: ai.summary,
       takeaways: ai.takeaways,
-      tags: [],
+      tags: ai.tags ?? [],
       transcript_text: transcriptText || null,
     })
     .select("id")

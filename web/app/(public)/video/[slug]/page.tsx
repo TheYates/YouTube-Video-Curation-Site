@@ -3,7 +3,7 @@ import { cache } from "react";
 import { notFound, permanentRedirect } from "next/navigation";
 import { getRelatedVideos, getVideo, getVideoListings } from "../../../../lib/videos";
 import { buildTranscriptPayload } from "../../../../lib/transcript-payload";
-import { videoJsonLd, safeJson } from "../../../../lib/schema";
+import { videoJsonLd, safeJson, CURATOR } from "../../../../lib/schema";
 import { truncateWords } from "../../../../lib/text";
 import VideoDetail from "../../../../components/video-detail";
 import RelatedVideos from "../../../../components/related-videos";
@@ -50,6 +50,8 @@ export async function generateMetadata({
   return {
     title: video.title,
     description,
+    // <meta name="author">: the curator, by name.
+    authors: [{ name: CURATOR.name, url: CURATOR.url }],
     alternates: { canonical: `/video/${video.slug}` },
     openGraph: {
       title: video.title,
@@ -59,7 +61,11 @@ export async function generateMetadata({
       // source was uploaded to YouTube (which can be years earlier).
       publishedTime: new Date(video.curatedAt).toISOString(),
       modifiedTime: new Date(video.curatedAt).toISOString(),
-      authors: [video.channelName],
+      // article:author is a profile URL per the OG spec, not a name — the
+      // curator's profile, so the page is attributed to a person rather than
+      // the source channel (which is already named on-page and in the
+      // VideoObject). Next's openGraph.authors only accepts strings/URLs.
+      authors: [CURATOR.url],
       tags: video.tags,
       images: [{ url: video.thumbnailUrl, width: 1280, height: 720, alt: video.title }],
     },

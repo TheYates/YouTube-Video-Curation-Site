@@ -12,7 +12,9 @@
     "frames:backfill": "node scripts/backfill-frames.mjs",
     "discover": "node scripts/discover.mjs",
     "auto": "node scripts/auto-pipeline.mjs",
-    "sources:backfill": "node scripts/backfill-sources.mjs"
+    "sources:backfill": "node scripts/backfill-sources.mjs",
+    "tags:backfill": "node scripts/backfill-tags.mjs",
+    "duplicates:merge": "node scripts/merge-duplicates.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",

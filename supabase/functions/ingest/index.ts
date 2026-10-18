@@ -405,6 +405,7 @@ async function transcribeWithWhisper(
 interface AiResult {
   summary: string
   takeaways: string[]
+  tags: string[]
   chapters: { title: string; startTime: number; description: string }[]
   ok: boolean
 }
@@ -418,13 +419,15 @@ async function summarize(
   const fallback: AiResult = {
     summary: `${title} by ${channel}.`,
     takeaways: [],
+    tags: [],
     chapters: [],
     ok: false,
   }
   const prompt =
     `Video: "${title}" by ${channel}.\n\nTranscript (may be truncated):\n` +
     `${transcriptText.slice(0, 12000)}\n\nReturn JSON: { "summary": "2-3 sentence editorial summary", ` +
-    `"takeaways": ["4-5 crisp bullets"], "chapters": [{ "title": "...", "startTime": <seconds>, ` +
+    `"takeaways": ["4-5 crisp bullets"], "tags": ["3-6 lowercase topical tags"], ` +
+    `"chapters": [{ "title": "...", "startTime": <seconds>, ` +
     `"description": "..." }] } with 3-5 chapters spread across the video.`
   // Refreshed 2026-09: Groq retired the llama-3.x chat IDs (HTTP 404).
   // Verified live via GET /models; first model that answers wins.
@@ -459,6 +462,12 @@ async function summarize(
         summary: String(parsed.summary ?? fallback.summary),
         takeaways: Array.isArray(parsed.takeaways)
           ? parsed.takeaways.map(String).slice(0, 6)
+          : [],
+        tags: Array.isArray(parsed.tags)
+          ? parsed.tags
+              .map((t: unknown) => String(t).toLowerCase().trim())
+              .filter(Boolean)
+              .slice(0, 6)
           : [],
         chapters: Array.isArray(parsed.chapters)
           ? parsed.chapters.slice(0, 8).map((c: { title?: unknown; startTime?: unknown; description?: unknown }) => ({
@@ -660,7 +669,7 @@ Deno.serve(async (req) => {
       thumbnail_url: thumb,
       summary: ai.summary,
       takeaways: ai.takeaways,
-      tags: [],
+      tags: ai.tags,
       transcript_text: transcriptText || null,
     })
     .select("id")

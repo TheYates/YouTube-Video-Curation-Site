@@ -22,4 +22,31 @@ Add property → URL prefix → https://curateur-ashy.vercel.app/ → verify via
 Sitemaps (left nav) → add sitemap.xml → expect “Success / Discovered: 23” within a day.
 URL Inspection → paste 2–3 video URLs → Request indexing (seeds the queue instead of waiting for discovery).
 Then leave it alone for 1–2 weeks — check Coverage (all 21 indexed?) and Performance (which queries surface?). That data decides what comes next: more videos in winning categories, not guesses.
-Nothing to commit — the working tree is untouched.
+Nothing to commit — the working tree was untouched.
+
+---
+
+# Domain swap runbook (brand "Curataur" vs host "curateur-ashy.vercel.app")
+
+Decision deferred: buy a matching domain later. Everything absolute already
+derives from one place, so the swap is config, not code:
+
+- `web/lib/site-url.ts` is the single origin. Precedence: `NEXT_PUBLIC_SITE_URL`
+  → `VERCEL_PROJECT_PRODUCTION_URL` → `http://localhost:3000`. Canonical links,
+  OG/Twitter tags, schema `@id`s, `sitemap.xml`, `robots.txt` and `feed.xml` all
+  call it, so none of them need editing.
+- The only host literal in the repo is `SITE` in `scripts/_sitemap-audit.mjs`
+  (a local audit script, never deployed).
+
+Steps when a domain is chosen:
+1. Set `NEXT_PUBLIC_SITE_URL=https://<new-domain>` in the Vercel project env
+   (Production + Preview) and redeploy. Confirm `<link rel="canonical">`,
+   `sitemap.xml`, `robots.txt` and the schema `@id`s all report the new host.
+2. Add the domain in Vercel → Project → Domains, then redirect the old
+   `curateur-ashy.vercel.app` host to it (Vercel dashboard domain redirect, 301).
+3. In Search Console: add the new property, submit `sitemap.xml`, and use the
+   Change of Address tool from the old property. Reserve the vercel.app URL
+   prefix so the redirect stays verified.
+4. If the display brand itself changes (Curataur ↔ Curateur), grep `SITE_NAME`
+   (`web/lib/schema.ts`), the layout/feed/about/metadata titles, and `about`
+   copy — brand strings are not centralized the way URLs are.
