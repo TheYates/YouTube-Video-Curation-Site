@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { NextConfig } from "next";
+import { VIDEO_SLUG_REDIRECTS } from "./lib/slug-redirects";
 
 const nextConfig: NextConfig = {
   // Monorepo-adjacent layout (root + web/ lockfiles, plus a stray one in
@@ -11,6 +12,15 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "img.youtube.com" },
       { protocol: "https", hostname: "**.supabase.co" },
     ],
+  },
+  async redirects() {
+    // Corrected slugs (see lib/slug-redirects.ts). Query strings such as ?t=
+    // are preserved by Next's redirect handling.
+    return Object.entries(VIDEO_SLUG_REDIRECTS).map(([from, to]) => ({
+      source: `/video/${from}`,
+      destination: `/video/${to}`,
+      permanent: true,
+    }));
   },
   async headers() {
     return [

@@ -32,6 +32,7 @@ interface VideoRow {
   title: string;
   channel_name: string;
   published_at: string;
+  created_at: string | null;
   duration_sec: number;
   category: string;
   thumbnail_url: string;
@@ -51,6 +52,7 @@ function mapRowToVideo(row: VideoRow): Video {
     title: row.title,
     channelName: row.channel_name,
     publishedAt: row.published_at,
+    curatedAt: row.created_at ?? row.published_at,
     durationSeconds: Number(row.duration_sec),
     category: row.category,
     thumbnailUrl: row.thumbnail_url,
@@ -81,7 +83,7 @@ function mapRowToVideo(row: VideoRow): Video {
 // affiliate links, or transcript words. (The homepage used to download every
 // video's full transcript and never display any of it: N+ queries per render.)
 const CARD_SELECT =
-  "id,slug,youtube_id,title,channel_name,published_at,duration_sec,category,thumbnail_url,summary,takeaways,tags";
+  "id,slug,youtube_id,title,channel_name,published_at,created_at,duration_sec,category,thumbnail_url,summary,takeaways,tags";
 
 interface CardRow {
   id: string;
@@ -90,6 +92,7 @@ interface CardRow {
   title: string;
   channel_name: string;
   published_at: string;
+  created_at: string | null;
   duration_sec: number;
   category: string;
   thumbnail_url: string;
@@ -106,6 +109,7 @@ function mapCardToVideo(row: CardRow): Video {
     title: row.title,
     channelName: row.channel_name,
     publishedAt: row.published_at,
+    curatedAt: row.created_at ?? row.published_at,
     durationSeconds: Number(row.duration_sec),
     category: row.category,
     thumbnailUrl: row.thumbnail_url,
@@ -216,6 +220,7 @@ export interface VideoListing {
   id: string;
   slug: string;
   publishedAt: string;
+  curatedAt: string;
   category: string;
 }
 
@@ -235,18 +240,27 @@ export async function getVideoListings(): Promise<VideoListing[]> {
   const { data, error } = await sb
     .from("videos")
     // `category` rides along so the sitemap can date each category hub from its
-    // newest video without a second query.
-    .select("id,slug,published_at,category")
+    // newest video without a second query. `created_at` is the date the page
+    // last changed (curation), which is what <lastmod> should report — not the
+    // original YouTube upload.
+    .select("id,slug,published_at,created_at,category")
     .not("transcript_text", "is", null)
     .order("published_at", { ascending: false })
     .limit(5000);
   if (error) throw error;
   return (
-    (data ?? []) as { id: string; slug: string; published_at: string; category: string }[]
+    (data ?? []) as {
+      id: string;
+      slug: string;
+      published_at: string;
+      created_at: string | null;
+      category: string;
+    }[]
   ).map((r) => ({
     id: r.id,
     slug: r.slug,
     publishedAt: r.published_at,
+    curatedAt: r.created_at ?? r.published_at,
     category: r.category,
   }));
 }
@@ -262,12 +276,18 @@ export async function getCategories(): Promise<string[]> {
 }
 
 // Fallback when app_settings is missing (migration not run yet).
-export const DEFAULT_MIN_CATEGORY_VIDEOS = 3;
+//
+// 1 = every real category is surfaced (nav tabs, homepage count, sitemap). The
+// threshold used to default to 3, which left three live hubs (News, Gaming,
+// General) reachable and linked from video badges while the homepage claimed a
+// smaller category count — an inconsistency between what existed and what was
+// advertised. The setting still exists for curators who want thin sections
+// held back; the default now matches what the site actually publishes.
+export const DEFAULT_MIN_CATEGORY_VIDEOS = 1;
 
 // Minimum videos before a category earns a public nav tab — curator-set via
-// /admin/categories (app_settings.min_category_videos). Thin sections read
-// as abandoned to visitors and Google; hidden categories stay reachable via
-// direct URL, search, and related videos.
+// /admin/categories (app_settings.min_category_videos). Hidden categories stay
+// reachable via direct URL, search, and related videos.
 export async function getMinCategoryVideos(): Promise<number> {
   try {
     const sb = getPublicSupabase();

@@ -3,6 +3,8 @@ import { cache } from "react";
 import { notFound, permanentRedirect } from "next/navigation";
 import { getRelatedVideos, getVideo, getVideoListings } from "../../../../lib/videos";
 import { buildTranscriptPayload } from "../../../../lib/transcript-payload";
+import { videoJsonLd, safeJson } from "../../../../lib/schema";
+import { truncateWords } from "../../../../lib/text";
 import VideoDetail from "../../../../components/video-detail";
 import RelatedVideos from "../../../../components/related-videos";
 
@@ -38,9 +40,13 @@ export async function generateMetadata({
   const { slug } = await params;
   const video = await getCachedVideo(slug).catch(() => null);
   if (!video) return { title: "Video not found" };
-  const description = video.summary
-    ? video.summary.slice(0, 160)
-    : `Full transcript, summary and chapters for "${video.title}" by ${video.channelName}.`;
+  // Word-boundary truncation: a hard slice(0, 160) cut mid-word and could leave
+  // a trailing space, which is exactly what a SERP snippet shows.
+  const description = truncateWords(
+    video.summary ||
+      `Full transcript, summary and chapters for "${video.title}" by ${video.channelName}.`,
+    155
+  );
   return {
     title: video.title,
     description,
@@ -49,7 +55,10 @@ export async function generateMetadata({
       title: video.title,
       description,
       type: "article",
-      publishedTime: video.publishedAt,
+      // The page's own publish date is when it was curated, not when the
+      // source was uploaded to YouTube (which can be years earlier).
+      publishedTime: new Date(video.curatedAt).toISOString(),
+      modifiedTime: new Date(video.curatedAt).toISOString(),
       authors: [video.channelName],
       tags: video.tags,
       images: [{ url: video.thumbnailUrl, width: 1280, height: 720, alt: video.title }],
@@ -92,55 +101,17 @@ export default async function VideoPage({
   const { transcript, ...videoMeta } = video;
   const transcriptPayload = buildTranscriptPayload(transcript);
 
-  // VideoObject structured data: makes pages eligible for video rich
-  // results (the "Discovered videos" track in Search Console).
-  const dur = Math.max(0, Math.floor(video.durationSeconds));
-  const isoDuration = `PT${Math.floor(dur / 3600)}H${Math.floor((dur % 3600) / 60)}M${dur % 60}S`;
-  const videoJsonLd = {
-    "@context": "https://schema.org",
-    "@type": "VideoObject",
-    name: video.title,
-    description: video.summary ? video.summary.slice(0, 500) : video.title,
-    thumbnailUrl: [video.thumbnailUrl],
-    uploadDate: new Date(video.publishedAt).toISOString(),
-    duration: isoDuration,
-    embedUrl: `https://www.youtube.com/embed/${video.youtubeId}`,
-    contentUrl: `https://www.youtube.com/watch?v=${video.youtubeId}`,
-    author: { "@type": "Person", name: video.channelName },
-  };
-
-  // Breadcrumbs give Google an explicit parent path (Home → this video)
-  // instead of guessing at site hierarchy from the feed alone. Omitted when
-  // no site URL is configured, since a relative `item` is not useful here.
-  const siteBase = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
-  const breadcrumbJsonLd = siteBase
-    ? {
-        "@context": "https://schema.org",
-        "@type": "BreadcrumbList",
-        itemListElement: [
-          { "@type": "ListItem", position: 1, name: "Home", item: siteBase },
-          {
-            "@type": "ListItem",
-            position: 2,
-            name: video.title,
-            item: `${siteBase}/video/${video.slug}`,
-          },
-        ],
-      }
-    : null;
+  // One @graph carries the VideoObject (with Clip key moments) and the
+  // breadcrumb trail: one script tag, two linked entities, and the publisher
+  // resolved by @id against the site-wide Organization node in the layout.
+  const jsonLd = videoJsonLd(video);
 
   return (
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(videoJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJson(jsonLd) }}
       />
-      {breadcrumbJsonLd && (
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
-        />
-      )}
       <VideoDetail video={videoMeta} transcript={transcriptPayload} />
       {related.length > 0 && (
         <div className="mx-auto max-w-5xl px-6">

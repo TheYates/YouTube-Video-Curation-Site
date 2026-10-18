@@ -1,4 +1,4 @@
-# Signal — YouTube Video Curation Site
+# Curataur — YouTube Video Curation Site
 
 Next.js 15 (App Router) + Tailwind CSS v4 + Supabase. Production lives in `web/`
 (deployed to Vercel with Root Directory `web/`); repo root holds local

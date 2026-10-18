@@ -11,6 +11,7 @@ declare global {
           events?: {
             onReady?: (event: { target: YTPlayer }) => void;
             onStateChange?: (event: { data: number }) => void;
+            onError?: (event: { data: number }) => void;
           };
         }
       ) => YTPlayer;
@@ -56,6 +57,10 @@ export function useYouTubePlayer(youtubeId: string, containerId: string) {
   const [currentTime, setCurrentTime] = useState(0);
   const [isReady, setIsReady] = useState(false);
   const [isActive, setIsActive] = useState(false); // playing or paused (not ended/unstarted)
+  // 100 = removed/private, 101/150 = owner disabled embedding on other sites.
+  // Either way the iframe will never play, so the page offers a YouTube link
+  // instead of a dead black rectangle.
+  const [isUnavailable, setIsUnavailable] = useState(false);
 
   const startPolling = useCallback(() => {
     if (intervalRef.current) return;
@@ -94,6 +99,7 @@ export function useYouTubePlayer(youtubeId: string, containerId: string) {
 
   useEffect(() => {
     let destroyed = false;
+    setIsUnavailable(false);
 
     loadYouTubeAPI(() => {
       if (destroyed) return;
@@ -103,6 +109,12 @@ export function useYouTubePlayer(youtubeId: string, containerId: string) {
         events: {
           onReady: () => {
             if (!destroyed) setIsReady(true);
+          },
+          onError: () => {
+            if (destroyed) return;
+            stopPolling();
+            setIsReady(false);
+            setIsUnavailable(true);
           },
           onStateChange: (event) => {
             if (destroyed) return;
@@ -133,5 +145,5 @@ export function useYouTubePlayer(youtubeId: string, containerId: string) {
     };
   }, [youtubeId, containerId, startPolling, stopPolling]);
 
-  return { currentTime, seekTo, playAt, isReady, isActive };
+  return { currentTime, seekTo, playAt, isReady, isActive, isUnavailable };
 }

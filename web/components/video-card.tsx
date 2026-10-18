@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Video } from "../lib/types";
+import { truncateWords } from "../lib/text";
 import ThumbImage from "./thumb-image";
 
 function formatDate(dateStr: string) {
@@ -40,7 +41,7 @@ export default function VideoCard({ video }: { video: Video }) {
                 {video.title}
               </h2>
               <p className="mt-2 text-sm leading-relaxed text-(--color-muted-foreground) line-clamp-2">
-                {video.summary.slice(0, 180)}…
+                {truncateWords(video.summary, 180)}
               </p>
             </div>
 

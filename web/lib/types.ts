@@ -25,6 +25,9 @@ export interface Video {
   title: string;
   channelName: string;
   publishedAt: string;
+  // When the video entered the library (videos.created_at) — the page's own
+  // publish/modify date. publishedAt stays the original YouTube upload.
+  curatedAt: string;
   durationSeconds: number;
   category: string;
   thumbnailUrl: string;

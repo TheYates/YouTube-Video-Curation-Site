@@ -31,9 +31,15 @@ export async function GET(): Promise<Response> {
   const videos = await getVideoCards("All").catch(() => []);
   const items = videos.slice(0, FEED_LIMIT);
 
-  // Falls back to now for an empty library, so the document is still valid.
-  const lastBuildDate = items[0]?.publishedAt
-    ? new Date(items[0].publishedAt).toUTCString()
+  // Curation dates: this feed announces what was added to the library, not
+  // when the source happened to be uploaded to YouTube. Falls back to now for
+  // an empty library, so the document is still valid.
+  const newestCurated = items.reduce<string | null>(
+    (max, v) => (!max || v.curatedAt > max ? v.curatedAt : max),
+    null
+  );
+  const lastBuildDate = newestCurated
+    ? new Date(newestCurated).toUTCString()
     : new Date().toUTCString();
 
   const itemXml = items.map((video) => {
@@ -43,7 +49,7 @@ export async function GET(): Promise<Response> {
       `      <title>${escapeXml(video.title)}</title>`,
       `      <link>${url}</link>`,
       `      <guid isPermaLink="true">${url}</guid>`,
-      `      <pubDate>${new Date(video.publishedAt).toUTCString()}</pubDate>`,
+      `      <pubDate>${new Date(video.curatedAt).toUTCString()}</pubDate>`,
       `      <category>${escapeXml(video.category)}</category>`,
       `      <description>${escapeXml(video.summary)}</description>`,
       "    </item>",

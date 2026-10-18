@@ -92,17 +92,27 @@ function iso8601ToSeconds(iso) {
 
 // Public URL slug (/video/<slug>), frozen at publish — retitles never change
 // it. Keep in sync with web/lib/slug.ts and supabase/functions/ingest/index.ts.
+// Truncation is word-complete: the old slice(0, 60) left slugs ending
+// mid-word ("...-pc-tha"), which read as broken and split the final keyword.
+// Cut at the last word boundary before 60, then keep the word straddling it up
+// to a 70-character ceiling.
 function slugifyTitle(title) {
-  const stem = String(title ?? "")
+  const normalized = String(title ?? "")
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, "")
     .replace(/[\s_-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60)
-    .replace(/-+$/, "");
-  return stem || "video";
+    .replace(/^-+|-+$/g, "");
+  if (!normalized) return "video";
+  if (normalized.length <= 60) return normalized;
+  let end = 60;
+  const boundary = normalized.lastIndexOf("-", 60);
+  if (boundary > 20) end = boundary;
+  const nextBoundary = normalized.indexOf("-", end + 1);
+  const wordEnd = nextBoundary === -1 ? normalized.length : nextBoundary;
+  if (wordEnd <= 70) end = wordEnd;
+  return normalized.slice(0, end).replace(/-+$/, "") || "video";
 }
 
 async function uniqueSlug(sb, title) {
@@ -190,6 +200,23 @@ export async function ingestOne(url, opts = {}) {
   const durationSec = iso8601ToSeconds(item.contentDetails?.duration ?? "PT0S");
   const category = opts.categoryOverride ?? YT_CATEGORY_MAP[String(sn.categoryId ?? "")] ?? "General";
   console.log(`metadata ok: "${sn.title}" (${durationSec}s, ${category})`);
+
+  // 1b. Embeddability probe (best-effort). oEmbed is keyless and answers 401
+  // when the owner disabled playback on other sites — the one case where the
+  // on-site player can only ever show an error. Non-fatal: the transcript may
+  // still be worth having, so this warns instead of aborting.
+  try {
+    const oe = await fetch(
+      `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${youtubeId}`)}`,
+    );
+    if (oe.status === 401) {
+      console.error("embedding disabled by owner — the player will fall back to a YouTube link");
+    } else if (!oe.ok) {
+      console.error(`oembed check HTTP ${oe.status}`);
+    }
+  } catch (e) {
+    console.error("oembed check failed:", e?.message ?? e);
+  }
 
   // 2. Captions via yt-dlp (subtitle track URLs straight from the info JSON —
   // no files written). Manual English preferred, auto-generated second.

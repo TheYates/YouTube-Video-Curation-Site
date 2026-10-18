@@ -78,18 +78,28 @@ function iso8601ToSeconds(iso: string): number {
 }
 
 // Public URL slug (/video/<slug>), frozen at publish — retitles never change
-// it. Keep in sync with web/lib/slug.ts and scripts/ingest.mjs.
+// it. Keep in sync with web/lib/slug.ts and scripts/ingest-core.mjs.
+//
+// Truncation is word-complete: the old slice(0, 60) left slugs ending mid-word
+// ("...-pc-tha"). Cut at the last word boundary before 60, then keep the word
+// straddling it up to a 70-character ceiling.
 function slugifyTitle(title: string): string {
-  const stem = title
+  const normalized = title
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, "")
     .replace(/[\s_-]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 60)
-    .replace(/-+$/, "")
-  return stem || "video"
+  if (!normalized) return "video"
+  if (normalized.length <= 60) return normalized
+  let end = 60
+  const boundary = normalized.lastIndexOf("-", 60)
+  if (boundary > 20) end = boundary
+  const nextBoundary = normalized.indexOf("-", end + 1)
+  const wordEnd = nextBoundary === -1 ? normalized.length : nextBoundary
+  if (wordEnd <= 70) end = wordEnd
+  return normalized.slice(0, end).replace(/-+$/, "") || "video"
 }
 
 // YouTube numeric category → our editorial buckets. Unknown → "General"

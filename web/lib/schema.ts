@@ -1,0 +1,144 @@
+import type { Video } from "./types";
+import { categorySlug } from "./category";
+import { truncateWords } from "./text";
+import { siteUrl } from "./site-url";
+
+// Structured data lives in one place so the page files stay readable and both
+// graphs reference the same entity @ids.
+//
+// The Organization/WebSite graph is emitted once in the root layout; the video
+// graph refers to it by @id instead of repeating it per page. That is what lets
+// Google tie every VideoObject to one publisher entity.
+export const SITE_NAME = "Curataur";
+
+export function organizationId(base = siteUrl()): string {
+  return `${base}/#organization`;
+}
+
+export function websiteId(base = siteUrl()): string {
+  return `${base}/#website`;
+}
+
+// JSON for embedding inside <script>. JSON.stringify leaves "<" and the JS
+// line separators intact, so a title containing "</script>" could close the
+// tag early. Escaping them keeps the payload inert.
+export function safeJson(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
+export function siteJsonLd() {
+  const base = siteUrl();
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": organizationId(base),
+        name: SITE_NAME,
+        url: base,
+        logo: {
+          "@type": "ImageObject",
+          url: `${base}/logo.svg`,
+          width: 512,
+          height: 512,
+        },
+      },
+      {
+        "@type": "WebSite",
+        "@id": websiteId(base),
+        name: SITE_NAME,
+        url: base,
+        publisher: { "@id": organizationId(base) },
+        potentialAction: {
+          "@type": "SearchAction",
+          target: `${base}/search?q={search_term_string}`,
+          "query-input": "required name=search_term_string",
+        },
+      },
+    ],
+  };
+}
+
+// ISO 8601 duration without zero-valued units ("PT11M4S", not "PT0H11M4S").
+function isoDuration(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return `PT${h ? `${h}H` : ""}${m ? `${m}M` : ""}${s || (!h && !m) ? `${s}S` : ""}`;
+}
+
+export function videoJsonLd(video: Video, base = siteUrl()) {
+  const pageUrl = `${base}/video/${video.slug}`;
+  const description = truncateWords(video.summary || video.title, 500);
+
+  // Chapters are already stored in chronological order, but sort defensively:
+  // Clip.startOffset must ascend for the "Key moments" rich result.
+  const chapters = [...video.chapters]
+    .filter((c) => Number.isFinite(c.startTime) && c.startTime >= 0)
+    .sort((a, b) => a.startTime - b.startTime);
+
+  // hasPart/Clip is how a video earns the "Key moments" treatment in video
+  // SERPs. Each clip deep-links to the moment (?t=), which the player reads.
+  const hasPart = chapters.length
+    ? chapters.map((chapter, i) => {
+        const start = Math.round(chapter.startTime);
+        const next = chapters[i + 1];
+        const rawEnd = next ? next.startTime : Math.max(video.durationSeconds, chapter.startTime);
+        return {
+          "@type": "Clip",
+          name: chapter.title,
+          startOffset: start,
+          // Google needs the end strictly after the start; a chapter pinned at
+          // the very end of a video still gets a usable one-second window.
+          endOffset: Math.max(start + 1, Math.round(rawEnd)),
+          url: `${pageUrl}?t=${start}`,
+        };
+      })
+    : undefined;
+
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "VideoObject",
+        "@id": `${pageUrl}#video`,
+        name: video.title,
+        description,
+        thumbnailUrl: [video.thumbnailUrl],
+        // uploadDate is the original YouTube upload — Google's video rich
+        // result reads it as the video's age.
+        uploadDate: new Date(video.publishedAt).toISOString(),
+        // The page's own dates are curation dates: this library resurfaces old
+        // uploads, so claiming the upload date as publication would make every
+        // page look years stale.
+        datePublished: new Date(video.curatedAt).toISOString(),
+        dateModified: new Date(video.curatedAt).toISOString(),
+        duration: isoDuration(video.durationSeconds),
+        embedUrl: `https://www.youtube.com/embed/${video.youtubeId}`,
+        contentUrl: `https://www.youtube.com/watch?v=${video.youtubeId}`,
+        author: { "@type": "Person", name: video.channelName },
+        publisher: { "@id": organizationId(base) },
+        isPartOf: { "@id": websiteId(base) },
+        ...(hasPart ? { hasPart } : {}),
+      },
+      {
+        "@type": "BreadcrumbList",
+        "@id": `${pageUrl}#breadcrumb`,
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "Home", item: base },
+          {
+            "@type": "ListItem",
+            position: 2,
+            name: video.category,
+            item: `${base}/category/${categorySlug(video.category)}`,
+          },
+          { "@type": "ListItem", position: 3, name: video.title, item: pageUrl },
+        ],
+      },
+    ],
+  };
+}

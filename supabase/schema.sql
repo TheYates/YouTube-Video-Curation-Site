@@ -1,4 +1,4 @@
--- Signal — Supabase schema. Run once in the Supabase SQL editor.
+-- Curataur — Supabase schema. Run once in the Supabase SQL editor.
 -- Public read on all tables. Writes require the service-role key
 -- (ingest worker only); there are deliberately no insert/update/delete policies.
 

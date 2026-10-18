@@ -38,7 +38,7 @@ export default function VideoDetail({
   const [playerOpen, setPlayerOpen] = useState(false);
   const pendingSeekRef = useRef<number | null>(null);
 
-  const { currentTime, seekTo, playAt, isReady, isActive } = useYouTubePlayer(
+  const { currentTime, seekTo, playAt, isReady, isActive, isUnavailable } = useYouTubePlayer(
     video.youtubeId,
     playerContainerId
   );
@@ -133,6 +133,28 @@ export default function VideoDetail({
           style={{ aspectRatio: "16/9", maxHeight: "420px" }}
         >
           <div id={playerContainerId} className="h-full w-full" />
+          {/* A dead embed (owner disabled playback on other sites) would
+              otherwise be an unlabelled black box — the worst outcome for
+              dwell time on the one page that cannot play. */}
+          {isUnavailable && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-(--color-muted) p-6 text-center">
+              <p className="font-display text-lg text-(--color-foreground)">
+                This video can’t play here
+              </p>
+              <p className="max-w-sm text-sm leading-relaxed text-(--color-muted-foreground)">
+                The owner disabled playback on other sites. The transcript below still works —
+                open the video on YouTube to watch along.
+              </p>
+              <a
+                href={`https://www.youtube.com/watch?v=${video.youtubeId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-sm bg-(--color-accent) px-4 py-2 font-mono text-xs uppercase tracking-widest text-(--color-accent-foreground) transition-opacity hover:opacity-80"
+              >
+                Watch on YouTube ↗
+              </a>
+            </div>
+          )}
           <button
             onClick={() => setPlayerOpen(false)}
             className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-sm bg-black/70 text-white/80 transition-colors hover:bg-black hover:text-white"
@@ -147,7 +169,7 @@ export default function VideoDetail({
 
       {/* Article header — server-rendered for SEO; hydrated for share buttons */}
       <div className="mb-10 border-b border-(--color-border) pb-10">
-        <div className="mb-3 flex items-center gap-3">
+        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1">
           {/* Links up to the category hub: every video page is a crawl path
               into /category/*, which is what makes the hubs discoverable. */}
           <Link
@@ -159,9 +181,16 @@ export default function VideoDetail({
           <span className="text-(--color-border)">·</span>
           <span
             className="font-mono text-xs text-(--color-muted-foreground)"
+            title="When this video was added to the library"
+          >
+            Curated on {formatDate(video.curatedAt)}
+          </span>
+          <span className="text-(--color-border)">·</span>
+          <span
+            className="font-mono text-xs text-(--color-muted-foreground)"
             title="Original YouTube upload date — Curataur surfaces timeless ideas, not just news"
           >
-            Originally uploaded {formatDate(video.publishedAt)}
+            Uploaded {formatDate(video.publishedAt)}
           </span>
           <span className="text-(--color-border)">·</span>
           <span className="font-mono text-xs text-(--color-muted-foreground)">{video.channelName}</span>
