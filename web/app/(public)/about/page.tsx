@@ -19,10 +19,10 @@ export default function AboutPage() {
 
       <div className="mt-8 space-y-5 text-base leading-relaxed text-(--color-foreground)">
         <p>
-          Signal is run by Yates, a writer and obsessive learner who started this project 
+          Signal is run by Henri, a writer and obsessive learner who started this project 
           to share the best ideas buried inside long-form videos. 
           I wanted a place where the real takeaways surfaced — without the noise or clickbait. 
-          Find me on X at @yatesh — that’s the fastest way to reach a person, not a form.
+          Find me on facebook at @henrithelayup — that’s the fastest way to reach a person, not a form.
         </p>
         <p>
           Every video here is hand-picked, not scraped. The bar is simple: would I
