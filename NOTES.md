@@ -80,3 +80,31 @@ Enable IndexNow once: deploy the app so `https://<host>/<key>.txt` is live
 `scripts/.env` pointed at that host. New publishes are submitted automatically
 (`scripts/indexnow.mjs`, wired into `ingest-core.mjs`). Bulk resubmit with
 `npm run indexnow -- --sitemap`, or one URL with `npm run indexnow -- /video/<slug>`.
+
+---
+
+# Editorial review state
+
+`scripts/draft-editorial.mjs` seeds every video with an **AI draft** note. The
+draft is not a substitute for the human layer — it is the thing to edit.
+
+- `videos.editorial_reviewed_at` (migration `20261020_editorial_reviewed.sql`)
+  records when a human actually reviewed the note. NULL = still an AI draft.
+- Saving the note in `/admin/videos/[id]` **is** the review action: `curate`'s
+  `update-video` stamps `editorial_reviewed_at = now()`. The badge in the editor
+  flips Draft → Reviewed, and the dashboard shows `Editorial Reviewed X / Y` so
+  the backlog is visible.
+- To send a note back to draft, pass `editorial_reviewed: false` (the editor's
+  "Mark as draft" button) — the server clears the timestamp.
+
+---
+
+# Structured data (JSON-LD)
+
+Exactly **one** `<script type="application/ld+json">` per page, emitted by
+`web/components/json-ld.tsx`. Never add a second emitter (that was the source of
+the old duplicate-graph finding): `web/lib/schema.ts` `pageJsonLd(pageNodes, base)`
+merges the site entities (Organization / WebSite / Person) with the page's own
+nodes into a single `@graph`. Verify with a build-output grep — each prerendered
+HTML file should show `real-tags=1` (the second `application/ld+json` substring
+in the RSC flight payload is expected and harmless).
