@@ -4,6 +4,9 @@
 // as `pending`. Nothing is published here — the curator approves in
 // /admin/review, and scripts/auto-pipeline.mjs ingests approved rows.
 //
+// YouTube Shorts are excluded before staging (see SHORTS_MAX_SEC below):
+// everything ≤60s, plus 60–180s videos whose aspect is portrait.
+//
 // Runs anywhere (official YouTube Data API is IP-agnostic; the Innertube
 // related-mining leg is best-effort and simply logs-and-skips on failure).
 //
@@ -18,6 +21,7 @@
 import dotenv from "dotenv";
 dotenv.config({ path: new URL("./.env", import.meta.url) });
 
+import youtubedl from "youtube-dl-exec";
 import { createClient } from "@supabase/supabase-js";
 
 const {
@@ -47,6 +51,36 @@ const YT_API = "https://www.googleapis.com/youtube/v3";
 // supabase/functions/ingest use). Only used for the best-effort related leg.
 const INNERTUBE_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8";
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
+
+// ── YouTube Shorts exclusion ────────────────────────────────────────────────
+// The Data API has no "isShort" flag, so we infer it. Everything ≤60s is a
+// classic Short and is dropped outright (this site publishes long-form
+// explainers). Shorts now run up to 3 minutes, so the 60–180s band is decided
+// by shape instead of length: real Shorts are vertical, and we drop only the
+// portrait ones — a horizontal 90s explainer is kept.
+const SHORTS_MAX_SEC = 60;
+const SHORTS_PORTRAIT_MAX_SEC = 180;
+
+// Video dimensions for the 60–180s band, via yt-dlp (the same tool the ingest
+// pipeline uses). The Innertube player endpoint no longer returns streamingData
+// to an unauthenticated WEB client, so yt-dlp is the reliable source of width/
+// height. Returns null on any failure so a flaky fetch never silently drops a
+// candidate.
+async function fetchAspect(youtubeId) {
+  try {
+    const info = await youtubedl(`https://www.youtube.com/watch?v=${youtubeId}`, {
+      dumpSingleJson: true,
+      noWarnings: true,
+    });
+    const width = Number(info?.width);
+    const height = Number(info?.height);
+    if (!width || !height) return null;
+    return { width, height, portrait: height > width };
+  } catch (e) {
+    console.error(`[discover] yt-dlp ${youtubeId} failed:`, e?.shortMessage ?? e?.message ?? e);
+    return null;
+  }
+}
 
 const quota = { search: 0, playlistItems: 0, videos: 0, channels: 0 };
 
@@ -357,15 +391,33 @@ async function main() {
   }
   console.log(`[discover] metadata resolved for ${details.length}/${ids.length} candidates`);
 
-  // Skip live/upcoming or absurdly long videos (transcript pipeline caps at
-  // 30 min for Whisper; captions still work past that but keep quality high).
-  const eligible = details.filter((d) => {
+  // Skip Shorts, live/upcoming, and absurdly long videos (transcript pipeline
+  // caps at 30 min for Whisper; captions still work past that but keep quality
+  // high). Shorts: ≤60s always; 60–180s only when the video is portrait.
+  const eligible = [];
+  for (const d of details) {
     if (d.duration_sec <= 0 || d.duration_sec > 4 * 3600) {
       console.log(`[discover] skip ${d.youtube_id}: duration ${d.duration_sec}s`);
-      return false;
+      continue;
     }
-    return true;
-  });
+    if (d.duration_sec <= SHORTS_MAX_SEC) {
+      console.log(`[discover] skip ${d.youtube_id}: Short (${d.duration_sec}s ≤ ${SHORTS_MAX_SEC}s)`);
+      continue;
+    }
+    if (d.duration_sec <= SHORTS_PORTRAIT_MAX_SEC) {
+      const aspect = await fetchAspect(d.youtube_id);
+      if (aspect?.portrait) {
+        console.log(
+          `[discover] skip ${d.youtube_id}: Short (${d.duration_sec}s, portrait ${aspect.width}×${aspect.height})`
+        );
+        continue;
+      }
+      if (!aspect) {
+        console.log(`[discover] keep ${d.youtube_id}: ${d.duration_sec}s (aspect unknown — keeping)`);
+      }
+    }
+    eligible.push(d);
+  }
 
   // ── Score (batched Groq calls, chunked to stay under request size limits) ──
   let siteCategories = ["Education", "Finance", "Tech", "Science", "Philosophy"];

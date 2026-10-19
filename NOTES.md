@@ -89,6 +89,27 @@ Enable IndexNow once: deploy the app so `https://<host>/<key>.txt` is live
 
 ---
 
+# Shorts exclusion
+
+The Data API has no "isShort" flag, so `discover.mjs` infers it before staging
+and never queues a Short for review:
+
+- **≤60s** — dropped outright (classic Shorts; this site publishes long-form).
+- **60–180s** — kept only if the frame is horizontal. Shorts now run to 3
+  minutes, so the shape decides: yt-dlp reports width/height and a portrait
+  frame (`height > width`) is dropped, while a horizontal 90s explainer is kept.
+- If the yt-dlp probe fails, the candidate is **kept** — a flaky fetch must not
+  silently drop real videos.
+- The rule lives in discovery **only** (`scripts/discover.mjs`, constants
+  `SHORTS_MAX_SEC` / `SHORTS_PORTRAIT_MAX_SEC`); `auto-pipeline.mjs` and the
+  review UI have no Shorts filter.
+
+Excluded videos are marked `rejected` (not deleted) so they stay in the dedupe
+set and don't resurface. The one-time cleanup of the pre-existing queue used the
+same rule.
+
+---
+
 # Editorial review state
 
 `scripts/draft-editorial.mjs` seeds every video with an **AI draft** note. The
