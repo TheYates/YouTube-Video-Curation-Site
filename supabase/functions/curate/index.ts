@@ -4,8 +4,13 @@
 // these tables).
 //
 // POST { action, ...payload } with the signed-in curator's access token:
-//   { action: "approve-candidate", id }        → status approved
+//   { action: "approve-candidate", id, publish_at? }
+//        → status approved; publish_at (ISO date/datetime, optional) holds the
+//          candidate until that time, so approving schedules rather than dumps.
+//          Omit or null → publish on the next auto run.
 //   { action: "reject-candidate",  id }        → status rejected
+//   { action: "set-publish-at",    id, publish_at }
+//        → reschedule an already-approved candidate (null clears the hold)
 //   { action: "add-channel",   handle, name?, category, description? }
 //   { action: "remove-channel", id }
 //   { action: "add-query",     query, category }
@@ -41,6 +46,16 @@ function json(body: Record<string, unknown>, status = 200) {
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+
+// A publish_at is either a calendar day (midnight UTC) or a full timestamp.
+// null/undefined/"" all mean "no hold" → value null. Invalid input → ok:false.
+function parsePublishAt(v: unknown): { ok: true; value: string | null } | { ok: false } {
+  if (v === null || v === undefined || String(v).trim() === "") return { ok: true, value: null }
+  const s = String(v).trim()
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s}T00:00:00.000Z` : s
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? { ok: false } : { ok: true, value: d.toISOString() }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -89,12 +104,26 @@ Deno.serve(async (req) => {
     const id = String(body.id ?? "")
     if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "Invalid candidate id." }, 400)
     const status = action === "approve-candidate" ? "approved" : "rejected"
-    const { error } = await sb
-      .from("video_candidates")
-      .update({ status, decided_at: new Date().toISOString() })
-      .eq("id", id)
+    const update: Record<string, unknown> = { status, decided_at: new Date().toISOString() }
+    if (body.publish_at !== undefined) {
+      const parsed = parsePublishAt(body.publish_at)
+      if (!parsed.ok) return json({ error: "publish_at must be an ISO date or timestamp." }, 400)
+      update.publish_at = parsed.value
+    }
+    const { error } = await sb.from("video_candidates").update(update).eq("id", id)
     if (error) return json({ error: `Update failed: ${error.message}` }, 500)
-    return json({ ok: true, id, status })
+    return json({ ok: true, id, status, publish_at: update.publish_at ?? null })
+  }
+
+  // Reschedule (or clear the hold on) an approved candidate.
+  if (action === "set-publish-at") {
+    const id = String(body.id ?? "")
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "Invalid candidate id." }, 400)
+    const parsed = parsePublishAt(body.publish_at)
+    if (!parsed.ok) return json({ error: "publish_at must be an ISO date or timestamp." }, 400)
+    const { error } = await sb.from("video_candidates").update({ publish_at: parsed.value }).eq("id", id)
+    if (error) return json({ error: `Update failed: ${error.message}` }, 500)
+    return json({ ok: true, id, publish_at: parsed.value })
   }
 
   // ── Source channels ──

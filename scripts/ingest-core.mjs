@@ -15,6 +15,7 @@ import { existsSync, readFileSync, statSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
+import { pingIndexNow } from "./indexnow.mjs";
 
 export function extractYouTubeId(u) {
   const patterns = [
@@ -550,5 +551,7 @@ export async function ingestOne(url, opts = {}) {
   }
   const frameCount = frameInfos.filter(Boolean).length;
   console.log(`done: ${videoRow.id} /video/${slug} (${wordRows.length} words, ${ai.chapters.length} chapters, ${frameCount} frames, source=${transcriptSource})`);
+  // Best-effort IndexNow ping so Bing/Yandex recrawl without waiting for a sitemap sweep.
+  await pingIndexNow(`/video/${slug}`).catch(() => {});
   return { status: "ok", id: videoRow.id, slug };
 }

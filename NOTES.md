@@ -50,3 +50,33 @@ Steps when a domain is chosen:
 4. If the display brand itself changes (Curataur ↔ Curateur), grep `SITE_NAME`
    (`web/lib/schema.ts`), the layout/feed/about/metadata titles, and `about`
    copy — brand strings are not centralized the way URLs are.
+
+---
+
+# Publishing cadence (volume + calendar)
+
+Decision: don't dump a batch of approved discoveries — keep a steady drip so the
+feed and each page's `lastmod` keep moving and every new URL gets its own crawl
+window.
+
+Mechanism:
+
+- Approve in `/admin/review`. Leave the date blank → the next `npm run auto`
+  ingests it (the previous behaviour). Set **Publish on** → the candidate is held
+  (`video_candidates.publish_at`, migration `20261019_candidate_publish_at.sql`)
+  and the auto-pipeline skips it until that day. The date is stored as midnight
+  UTC of the chosen day.
+- Volume per run is capped by `--max N` (default 5): `npm run auto -- --max 1`.
+- The auto run is scheduled on your machine (Task Scheduler). Its frequency ×
+  `--max` is the hard ceiling; the dates on approvals are the calendar.
+
+Suggested calendar (adjust to taste): **2–3 videos/week** on a fixed
+Mon/Wed/Fri grid, with `npm run auto` running daily and `--max 1`. Batch-approve
+with Mon/Wed/Fri dates in one sitting — it costs nothing extra and produces an
+even feed instead of a spike.
+
+Enable IndexNow once: deploy the app so `https://<host>/<key>.txt` is live
+(`web/public/b617fe8f894aa7e1eb361ee0c7f94f32.txt`) and keep `SITE_URL` in
+`scripts/.env` pointed at that host. New publishes are submitted automatically
+(`scripts/indexnow.mjs`, wired into `ingest-core.mjs`). Bulk resubmit with
+`npm run indexnow -- --sitemap`, or one URL with `npm run indexnow -- /video/<slug>`.

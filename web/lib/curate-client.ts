@@ -10,8 +10,9 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
 type CurateAction =
-  | { action: "approve-candidate"; id: string }
+  | { action: "approve-candidate"; id: string; publish_at?: string | null }
   | { action: "reject-candidate"; id: string }
+  | { action: "set-publish-at"; id: string; publish_at: string | null }
   | { action: "add-channel"; handle: string; name?: string; category: string; description?: string }
   | { action: "remove-channel"; id: string }
   | { action: "toggle-channel"; id: string; enabled: boolean }

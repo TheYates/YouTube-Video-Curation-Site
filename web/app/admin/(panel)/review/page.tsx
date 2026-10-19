@@ -23,9 +23,10 @@ function CandidateCard({
   busy,
 }: {
   c: VideoCandidate;
-  onDecide: (id: string, approve: boolean) => void;
+  onDecide: (id: string, approve: boolean, publishAt?: string | null) => void;
   busy: boolean;
 }) {
+  const [publishAt, setPublishAt] = useState("");
   return (
     <div
       className="rounded-sm border p-4 flex gap-4"
@@ -86,13 +87,29 @@ function CandidateCard({
         )}
         <div className="mt-3 flex items-center gap-3">
           <button
-            onClick={() => onDecide(c.id, true)}
+            onClick={() => onDecide(c.id, true, publishAt || null)}
             disabled={busy}
             className="rounded-sm px-4 py-1.5 font-mono text-xs uppercase tracking-widest transition-opacity hover:opacity-80 disabled:opacity-40"
             style={{ background: "var(--color-accent)", color: "var(--color-accent-foreground)" }}
           >
             Approve
           </button>
+          <label
+            className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wide"
+            style={{ color: "var(--color-muted-foreground)" }}
+            title="Optional: hold this video until the chosen day (blank = publish on the next auto run)"
+          >
+            Publish on
+            <input
+              type="date"
+              value={publishAt}
+              min={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => setPublishAt(e.target.value)}
+              disabled={busy}
+              className="rounded-sm border px-2 py-1 font-mono text-xs disabled:opacity-40"
+              style={{ borderColor: "var(--color-border)", background: "var(--color-card)", color: "var(--color-foreground)" }}
+            />
+          </label>
           <button
             onClick={() => onDecide(c.id, false)}
             disabled={busy}
@@ -150,22 +167,32 @@ export default function AdminReviewPage() {
     load();
   }, [load]);
 
-  async function decide(id: string, approve: boolean) {
+  async function decide(id: string, approve: boolean, publishAt: string | null = null) {
     setBusyId(id);
-    const res = await curate({ action: approve ? "approve-candidate" : "reject-candidate", id });
+    const res = await curate(
+      approve
+        ? { action: "approve-candidate", id, publish_at: publishAt }
+        : { action: "reject-candidate", id }
+    );
     setBusyId(null);
     if (!res) return; // toast already shown
     const moved = pending.find((c) => c.id === id);
     setPending((prev) => prev.filter((c) => c.id !== id));
     if (moved) {
       setDecided((prev) => [
-        { ...moved, status: approve ? "approved" : "rejected" },
+        { ...moved, status: approve ? "approved" : "rejected", publishAt: approve ? publishAt : moved.publishAt },
         ...prev,
       ]);
     }
     // Sidebar badge listens for this and re-counts the queue.
     window.dispatchEvent(new CustomEvent("signal:queue-updated"));
-    toast.success(approve ? "Approved — the next scheduled run (or npm run auto) will ingest it." : "Rejected.");
+    toast.success(
+      approve
+        ? publishAt
+          ? `Approved — scheduled to publish on ${publishAt}.`
+          : "Approved — the next scheduled run (or npm run auto) will ingest it."
+        : "Rejected."
+    );
   }
 
   const statusBadge = (s: VideoCandidate["status"]) => {
@@ -184,7 +211,9 @@ export default function AdminReviewPage() {
       <p className="text-sm leading-relaxed" style={{ color: "var(--color-muted-foreground)" }}>
         Videos discovered from your source channels, saved searches, and related-video mining.
         Nothing goes public until you approve it — the scheduled auto-pipeline ingests approved
-        candidates on your machine (<code className="font-mono">npm run auto</code>).
+        candidates on your machine (<code className="font-mono">npm run auto</code>). Approve
+        with a date to hold a video for your publishing calendar; leave it blank to publish on
+        the next run.
       </p>
 
       {dbMissing && (
@@ -257,6 +286,15 @@ export default function AdminReviewPage() {
                     >
                       {c.title}
                     </a>
+                    {c.status === "approved" && c.publishAt && (
+                      <span
+                        className="shrink-0 font-mono text-[10px]"
+                        style={{ color: "var(--color-muted-foreground)" }}
+                        title="Held until this date"
+                      >
+                        scheduled {c.publishAt.slice(0, 10)}
+                      </span>
+                    )}
                     {c.status === "failed" && c.reason && (
                       <span
                         className="hidden md:inline truncate text-xs"

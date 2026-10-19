@@ -187,6 +187,7 @@ export interface VideoCandidate {
   status: CandidateStatus;
   attempts: number;
   createdAt: string;
+  publishAt: string | null;
 }
 
 function mapCandidate(r: {
@@ -205,6 +206,7 @@ function mapCandidate(r: {
   status: string;
   attempts: number;
   created_at: string;
+  publish_at: string | null;
 }): VideoCandidate {
   return {
     id: r.id,
@@ -222,6 +224,7 @@ function mapCandidate(r: {
     status: r.status as CandidateStatus,
     attempts: r.attempts,
     createdAt: r.created_at,
+    publishAt: r.publish_at ?? null,
   };
 }
 

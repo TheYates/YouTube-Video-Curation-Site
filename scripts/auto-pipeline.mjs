@@ -8,7 +8,8 @@
 //   2. Ingest: approved candidates (status='approved', attempts<3) are run
 //      through the shared ingest pipeline in score order, up to --max
 //      (default 5) per run. Nothing publishes without the curator having
-//      approved it in /admin/review.
+//      approved it in /admin/review. A candidate with a future publish_at is
+//      skipped until that time, so approvals can be drip-fed as a calendar.
 //
 // Env: scripts/.env (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
 // YOUTUBE_API_KEY, GROQ_API_KEY). Ingest uses yt-dlp → must run on a
@@ -68,11 +69,15 @@ if (discoverOnly) {
   process.exit(0);
 }
 
+const nowIso = new Date().toISOString();
 const { data: approved, error } = await sb
   .from("video_candidates")
-  .select("id,youtube_id,title,suggested_category,attempts,score")
+  .select("id,youtube_id,title,suggested_category,attempts,score,publish_at")
   .eq("status", "approved")
   .lt("attempts", 3)
+  // Due now: unscheduled (null) or the scheduled time has passed.
+  .or(`publish_at.is.null,publish_at.lte.${nowIso}`)
+  .order("publish_at", { ascending: true, nullsFirst: true })
   .order("score", { ascending: false })
   .order("created_at", { ascending: true })
   .limit(Math.max(1, maxIngest));
@@ -83,7 +88,17 @@ if (error) {
 }
 
 if (!approved?.length) {
-  console.log("[auto] no approved candidates waiting — done.");
+  // Distinguish "nothing approved" from "approved but held for a future date".
+  const { count } = await sb
+    .from("video_candidates")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "approved")
+    .gt("publish_at", nowIso);
+  console.log(
+    count
+      ? `[auto] no candidates due yet — ${count} approved candidate(s) scheduled for later.`
+      : "[auto] no approved candidates waiting — done.",
+  );
   process.exit(0);
 }
 
