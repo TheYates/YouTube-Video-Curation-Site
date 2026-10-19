@@ -133,6 +133,66 @@ function CandidateCard({
   );
 }
 
+// Inline reschedule control for an already-approved candidate. Edits stay local
+// until Save so a date picker doesn't fire an API call per keystroke; Clear
+// removes the hold (the row then publishes on the next auto run).
+function ScheduleControl({
+  c,
+  onSave,
+  busy,
+}: {
+  c: VideoCandidate;
+  onSave: (id: string, publishAt: string | null) => void;
+  busy: boolean;
+}) {
+  const saved = c.publishAt ? c.publishAt.slice(0, 10) : "";
+  const [value, setValue] = useState(saved);
+  useEffect(() => setValue(saved), [saved]);
+  const dirty = value !== saved;
+  return (
+    <div className="ml-auto flex shrink-0 items-center gap-2">
+      <label
+        className="flex items-center gap-1 font-mono text-[10px] uppercase tracking-wide"
+        style={{ color: "var(--color-muted-foreground)" }}
+        title="Hold until this day; leave blank to publish on the next run"
+      >
+        Publish on
+        <input
+          type="date"
+          value={value}
+          min={new Date().toISOString().slice(0, 10)}
+          onChange={(e) => setValue(e.target.value)}
+          disabled={busy}
+          className="rounded-sm border px-1.5 py-0.5 font-mono text-[10px] disabled:opacity-40"
+          style={{ borderColor: "var(--color-border)", background: "var(--color-card)", color: "var(--color-foreground)" }}
+        />
+      </label>
+      {dirty ? (
+        <button
+          onClick={() => onSave(c.id, value || null)}
+          disabled={busy}
+          className="font-mono text-[10px] uppercase tracking-wide hover:text-[var(--color-accent)] disabled:opacity-40"
+          style={{ color: "var(--color-accent)" }}
+        >
+          Save
+        </button>
+      ) : (
+        c.publishAt && (
+          <button
+            onClick={() => onSave(c.id, null)}
+            disabled={busy}
+            className="font-mono text-[10px] uppercase tracking-wide hover:text-[var(--color-accent)] disabled:opacity-40"
+            style={{ color: "var(--color-muted-foreground)" }}
+            title="Clear the hold — publish on the next run"
+          >
+            Clear
+          </button>
+        )
+      )}
+    </div>
+  );
+}
+
 export default function AdminReviewPage() {
   const [pending, setPending] = useState<VideoCandidate[]>([]);
   const [decided, setDecided] = useState<VideoCandidate[]>([]);
@@ -183,6 +243,23 @@ export default function AdminReviewPage() {
         { ...moved, status: approve ? "approved" : "rejected", publishAt: approve ? publishAt : moved.publishAt },
         ...prev,
       ]);
+    } else {
+      // Re-deciding a row already in the decided list (e.g. Retry on a failed
+      // ingest): reflect the new status in place. The function resets attempts,
+      // so mirror it here too.
+      setDecided((prev) =>
+        prev.map((c) =>
+          c.id === id
+            ? {
+                ...c,
+                status: approve ? "approved" : "rejected",
+                publishAt: approve ? publishAt : c.publishAt,
+                attempts: approve ? 0 : c.attempts,
+                reason: approve ? "" : c.reason,
+              }
+            : c
+        )
+      );
     }
     // Sidebar badge listens for this and re-counts the queue.
     window.dispatchEvent(new CustomEvent("signal:queue-updated"));
@@ -193,6 +270,16 @@ export default function AdminReviewPage() {
           : "Approved — the next scheduled run (or npm run auto) will ingest it."
         : "Rejected."
     );
+  }
+
+  async function reschedule(id: string, publishAt: string | null) {
+    setBusyId(id);
+    const res = await curate({ action: "set-publish-at", id, publish_at: publishAt });
+    setBusyId(null);
+    if (!res) return; // toast already shown
+    const next = (res.publish_at as string | null) ?? null;
+    setDecided((prev) => prev.map((c) => (c.id === id ? { ...c, publishAt: next } : c)));
+    toast.success(next ? `Scheduled for ${next.slice(0, 10)}.` : "Hold cleared — publishes on the next run.");
   }
 
   const statusBadge = (s: VideoCandidate["status"]) => {
@@ -286,14 +373,8 @@ export default function AdminReviewPage() {
                     >
                       {c.title}
                     </a>
-                    {c.status === "approved" && c.publishAt && (
-                      <span
-                        className="shrink-0 font-mono text-[10px]"
-                        style={{ color: "var(--color-muted-foreground)" }}
-                        title="Held until this date"
-                      >
-                        scheduled {c.publishAt.slice(0, 10)}
-                      </span>
+                    {c.status === "approved" && (
+                      <ScheduleControl c={c} onSave={reschedule} busy={busyId === c.id} />
                     )}
                     {c.status === "failed" && c.reason && (
                       <span

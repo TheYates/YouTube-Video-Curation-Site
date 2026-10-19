@@ -69,6 +69,12 @@ Mechanism:
 - Volume per run is capped by `--max N` (default 5): `npm run auto -- --max 1`.
 - The auto run is scheduled on your machine (Task Scheduler). Its frequency ×
   `--max` is the hard ceiling; the dates on approvals are the calendar.
+- Already-approved rows are editable from the "recent decisions" list in
+  `/admin/review`: the inline **Publish on** control reschedules (`set-publish-at`)
+  and **Clear** drops the hold, no SQL needed. **Retry** on a failed row re-queues
+  it — approving resets the ingest attempt counter, so it's actually picked up
+  again. (Note: an undated row sorts ahead of dated ones, so clearing a hold makes
+  it publish on the next run.)
 
 Suggested calendar (adjust to taste): **2–3 videos/week** on a fixed
 Mon/Wed/Fri grid, with `npm run auto` running daily and `--max 1`. Batch-approve

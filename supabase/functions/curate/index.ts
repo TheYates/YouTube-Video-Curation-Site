@@ -7,7 +7,8 @@
 //   { action: "approve-candidate", id, publish_at? }
 //        → status approved; publish_at (ISO date/datetime, optional) holds the
 //          candidate until that time, so approving schedules rather than dumps.
-//          Omit or null → publish on the next auto run.
+//          Omit or null → publish on the next auto run. Resets the ingest
+//          attempt counter (so Retry on a failed row actually re-queues it).
 //   { action: "reject-candidate",  id }        → status rejected
 //   { action: "set-publish-at",    id, publish_at }
 //        → reschedule an already-approved candidate (null clears the hold)
@@ -109,6 +110,13 @@ Deno.serve(async (req) => {
     if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "Invalid candidate id." }, 400)
     const status = action === "approve-candidate" ? "approved" : "rejected"
     const update: Record<string, unknown> = { status, decided_at: new Date().toISOString() }
+    // Approving is a fresh decision: reset the ingest attempt counter. Without
+    // this, "Retry" on a failed row (attempts = 3) sets status back to approved
+    // but the auto pipeline's attempts < 3 filter skips it forever.
+    if (status === "approved") {
+      update.attempts = 0
+      update.reason = null
+    }
     if (body.publish_at !== undefined) {
       const parsed = parsePublishAt(body.publish_at)
       if (!parsed.ok) return json({ error: "publish_at must be an ISO date or timestamp." }, 400)
