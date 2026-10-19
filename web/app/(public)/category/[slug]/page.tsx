@@ -5,8 +5,10 @@ import { notFound } from "next/navigation";
 import { getCategories, getPublicCategories, getVideoCards } from "../../../../lib/videos";
 import { categoryFromSlug, categorySlug } from "../../../../lib/category";
 import { siteUrl } from "../../../../lib/site-url";
+import { pageJsonLd } from "../../../../lib/schema";
 import VideoCard from "../../../../components/video-card";
 import AdSlot from "../../../../components/ad-slot";
+import JsonLd from "../../../../components/json-ld";
 
 // A hub is a landing page, not a feed: it only changes when a video is added to
 // the category, so a longer window than the homepage's is fine.
@@ -78,7 +80,6 @@ export default async function CategoryPage({
   // in this order" statement instead of a loose list of links. numberOfItems
   // makes the shape of the page unambiguous even if a crawler truncates.
   const collectionJsonLd = {
-    "@context": "https://schema.org",
     "@type": "CollectionPage",
     name: `${category} videos`,
     url: `${base}/category/${slug}`,
@@ -96,7 +97,6 @@ export default async function CategoryPage({
   // Home → Category gives the hubs a real place in the site hierarchy rather
   // than leaving Google to infer one from the feed.
   const breadcrumbJsonLd = {
-    "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
       { "@type": "ListItem", position: 1, name: "Home", item: base },
@@ -104,18 +104,14 @@ export default async function CategoryPage({
     ],
   };
 
+  // Both nodes ride in the page's single @graph (one <script>).
+  const pageLd = pageJsonLd([collectionJsonLd, breadcrumbJsonLd], base);
+
   const siblings = navCategories.filter((c) => c !== "All" && c !== category);
 
   return (
     <main className="page-enter mx-auto max-w-5xl px-6 py-12">
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(collectionJsonLd) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
-      />
+      <JsonLd data={pageLd} />
 
       <nav
         aria-label="Breadcrumb"

@@ -5,7 +5,6 @@ import "./globals.css";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import GaConsent from "../components/ga-consent";
-import { siteJsonLd, safeJson } from "../lib/schema";
 
 const display = Fraunces({ subsets: ["latin"], variable: "--font-display" });
 const sans = Inter({ subsets: ["latin"], variable: "--font-sans" });
@@ -36,17 +35,14 @@ export const metadata: Metadata = {
   },
 };
 
-// Organization + WebSite are site-wide entities, so they belong here rather
-// than on each page: video pages reference them by @id as publisher/isPartOf.
-// SearchAction points at the transcript search, which is the site's only
-// internal query surface.
-const siteLd = safeJson(siteJsonLd());
+// Organization + WebSite + Person are site-wide entities. They are no longer
+// emitted here: each page renders one <JsonLd> via pageJsonLd(), which inlines
+// these nodes into that page's single @graph (see lib/schema.ts).
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
       <body className="min-h-screen bg-(--color-background) text-(--color-foreground)">
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: siteLd }} />
         {/* Feed autodiscovery. Deliberately a hoisted element rather than
             metadata `alternates.types`: a page that sets its own `alternates`
             (canonical) replaces the layout's whole `alternates` object, which

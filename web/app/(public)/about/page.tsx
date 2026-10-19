@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { pageJsonLd } from "../../../lib/schema";
+import JsonLd from "../../../components/json-ld";
 
 export const metadata: Metadata = {
   title: "About",
@@ -10,6 +12,7 @@ export const metadata: Metadata = {
 export default function AboutPage() {
   return (
     <main className="page-enter mx-auto max-w-2xl px-6 py-12">
+      <JsonLd data={pageJsonLd([])} />
       <p className="mb-3 font-mono text-xs uppercase tracking-widest text-(--color-accent)">
         About
       </p>

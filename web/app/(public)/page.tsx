@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { getPublicCategories, getVideoCards } from "../../lib/videos";
+import { pageJsonLd } from "../../lib/schema";
 import VideoFeed from "../../components/video-feed";
 import AdSlot from "../../components/ad-slot";
+import JsonLd from "../../components/json-ld";
 
 export const revalidate = 300;
 
@@ -20,29 +22,29 @@ export default async function Home() {
   const [allVideos, cats] = await Promise.all([getVideoCards("All"), getPublicCategories()]);
 
   // ItemList tells Google these links are one curated collection with an
-  // explicit order, rather than a loose set of links on the homepage. Omitted
-  // when no site URL is configured.
+  // explicit order, rather than a loose set of links on the homepage. The
+  // ItemList is included only when a site URL is configured (else the URLs would
+  // be wrong); the site-wide entities are emitted either way, in the same graph.
   const siteBase = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
-  const itemListJsonLd = siteBase
-    ? {
-        "@context": "https://schema.org",
-        "@type": "ItemList",
-        itemListElement: allVideos.map((v, i) => ({
-          "@type": "ListItem",
-          position: i + 1,
-          url: `${siteBase}/video/${v.slug}`,
-        })),
-      }
-    : null;
+  const pageLd = pageJsonLd(
+    siteBase
+      ? [
+          {
+            "@type": "ItemList",
+            itemListElement: allVideos.map((v, i) => ({
+              "@type": "ListItem",
+              position: i + 1,
+              url: `${siteBase}/video/${v.slug}`,
+            })),
+          },
+        ]
+      : [],
+    siteBase || undefined
+  );
 
   return (
     <main className="page-enter mx-auto max-w-5xl px-6 py-12">
-      {itemListJsonLd && (
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListJsonLd) }}
-        />
-      )}
+      <JsonLd data={pageLd} />
       <div className="mb-12 border-b border-(--color-border) pb-12">
         <p className="mb-3 font-mono text-xs uppercase tracking-widest text-(--color-accent)">
           Curated Intelligence

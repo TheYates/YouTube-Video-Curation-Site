@@ -3,10 +3,11 @@ import { cache } from "react";
 import { notFound, permanentRedirect } from "next/navigation";
 import { getRelatedVideos, getVideo, getVideoListings } from "../../../../lib/videos";
 import { buildTranscriptPayload } from "../../../../lib/transcript-payload";
-import { videoJsonLd, safeJson, CURATOR } from "../../../../lib/schema";
+import { videoNodes, pageJsonLd, CURATOR } from "../../../../lib/schema";
 import { truncateWords } from "../../../../lib/text";
 import VideoDetail from "../../../../components/video-detail";
 import RelatedVideos from "../../../../components/related-videos";
+import JsonLd from "../../../../components/json-ld";
 
 export const revalidate = 3600;
 
@@ -110,17 +111,14 @@ export default async function VideoPage({
   const { transcript, ...videoMeta } = video;
   const transcriptPayload = buildTranscriptPayload(transcript);
 
-  // One @graph carries the VideoObject (with Clip key moments) and the
-  // breadcrumb trail: one script tag, two linked entities, and the publisher
-  // resolved by @id against the site-wide Organization node in the layout.
-  const jsonLd = videoJsonLd(video);
+  // One @graph per page: the site-wide entities (Organization/WebSite/Person)
+  // plus this video's VideoObject (with Clip key moments), WebPage and
+  // breadcrumb — all emitted from a single <script>.
+  const jsonLd = pageJsonLd(videoNodes(video));
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: safeJson(jsonLd) }}
-      />
+      <JsonLd data={jsonLd} />
       <VideoDetail video={videoMeta} transcript={transcriptPayload} />
       {related.length > 0 && (
         <div className="mx-auto max-w-5xl px-6">

@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { searchVideos } from "../../../lib/videos";
+import { pageJsonLd } from "../../../lib/schema";
 import SearchForm from "../../../components/search-form";
+import JsonLd from "../../../components/json-ld";
 
 export const metadata: Metadata = {
   title: "Search Transcripts",
@@ -48,6 +50,7 @@ export default async function SearchPage({
 
   return (
     <main className="page-enter mx-auto max-w-5xl px-6 py-12">
+      <JsonLd data={pageJsonLd([])} />
       <div className="mb-10">
         <h1 className="mb-6 font-display text-4xl text-(--color-foreground)">Search Transcripts</h1>
         <SearchForm initialQuery={query} />

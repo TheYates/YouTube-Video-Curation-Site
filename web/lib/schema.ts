@@ -3,12 +3,11 @@ import { categorySlug } from "./category";
 import { truncateWords } from "./text";
 import { siteUrl } from "./site-url";
 
-// Structured data lives in one place so the page files stay readable and both
-// graphs reference the same entity @ids.
-//
-// The Organization/WebSite graph is emitted once in the root layout; the video
-// graph refers to it by @id instead of repeating it per page. That is what lets
-// Google tie every VideoObject to one publisher entity.
+// Structured data lives in one place. Every page emits exactly ONE
+// <script type="application/ld+json"> containing a single @graph, composed by
+// pageJsonLd(): the site-wide entities (Organization/WebSite/Person) plus the
+// page's own nodes. Cross-references between them still resolve by @id inside
+// that one graph — that is what ties every VideoObject to one publisher entity.
 export const SITE_NAME = "Curataur";
 
 export function organizationId(base = siteUrl()): string {
@@ -41,46 +40,52 @@ export function safeJson(value: unknown): string {
     .replace(/\u2029/g, "\\u2029");
 }
 
-export function siteJsonLd() {
-  const base = siteUrl();
+export function siteNodes(base = siteUrl()) {
+  return [
+    {
+      "@type": "Organization",
+      "@id": organizationId(base),
+      name: SITE_NAME,
+      url: base,
+      logo: {
+        "@type": "ImageObject",
+        url: `${base}/logo.svg`,
+        width: 512,
+        height: 512,
+      },
+    },
+    {
+      "@type": "WebSite",
+      "@id": websiteId(base),
+      name: SITE_NAME,
+      url: base,
+      publisher: { "@id": organizationId(base) },
+      potentialAction: {
+        "@type": "SearchAction",
+        target: `${base}/search?q={search_term_string}`,
+        "query-input": "required name=search_term_string",
+      },
+    },
+    {
+      // Declaring the curator once per page is what lets every video page name a
+      // real author (E-E-A-T) without the reader having to infer it.
+      "@type": "Person",
+      "@id": personId(base),
+      name: CURATOR.name,
+      url: CURATOR.url,
+      sameAs: [CURATOR.url],
+      worksFor: { "@id": organizationId(base) },
+    },
+  ];
+}
+
+// Compose the single @graph a page emits: the site-wide entities plus whatever
+// page-specific nodes it passes. This is the ONLY place JSON-LD is assembled, so
+// each page renders exactly one <script> (via components/json-ld.tsx).
+export function pageJsonLd(pageNodes: object[], base = siteUrl()) {
   return {
     "@context": "https://schema.org",
-    "@graph": [
-      {
-        "@type": "Organization",
-        "@id": organizationId(base),
-        name: SITE_NAME,
-        url: base,
-        logo: {
-          "@type": "ImageObject",
-          url: `${base}/logo.svg`,
-          width: 512,
-          height: 512,
-        },
-      },
-      {
-        "@type": "WebSite",
-        "@id": websiteId(base),
-        name: SITE_NAME,
-        url: base,
-        publisher: { "@id": organizationId(base) },
-        potentialAction: {
-          "@type": "SearchAction",
-          target: `${base}/search?q={search_term_string}`,
-          "query-input": "required name=search_term_string",
-        },
-      },
-      {
-        // Declaring the curator once, site-wide, is what lets every video page
-        // name a real author (E-E-A-T) without repeating the node 69 times.
-        "@type": "Person",
-        "@id": personId(base),
-        name: CURATOR.name,
-        url: CURATOR.url,
-        sameAs: [CURATOR.url],
-        worksFor: { "@id": organizationId(base) },
-      },
-    ],
+    "@graph": [...siteNodes(base), ...pageNodes],
   };
 }
 
@@ -93,7 +98,7 @@ function isoDuration(seconds: number): string {
   return `PT${h ? `${h}H` : ""}${m ? `${m}M` : ""}${s || (!h && !m) ? `${s}S` : ""}`;
 }
 
-export function videoJsonLd(video: Video, base = siteUrl()) {
+export function videoNodes(video: Video, base = siteUrl()): object[] {
   const pageUrl = `${base}/video/${video.slug}`;
   const description = truncateWords(video.summary || video.title, 500);
 
@@ -122,65 +127,62 @@ export function videoJsonLd(video: Video, base = siteUrl()) {
       })
     : undefined;
 
-  return {
-    "@context": "https://schema.org",
-    "@graph": [
-      {
-        "@type": "VideoObject",
-        "@id": `${pageUrl}#video`,
-        name: video.title,
-        description,
-        thumbnailUrl: [video.thumbnailUrl],
-        // uploadDate is the original YouTube upload — Google's video rich
-        // result reads it as the video's age.
-        uploadDate: new Date(video.publishedAt).toISOString(),
-        // The page's own dates are curation dates: this library resurfaces old
-        // uploads, so claiming the upload date as publication would make every
-        // page look years stale.
-        datePublished: new Date(video.curatedAt).toISOString(),
-        dateModified: new Date(video.curatedAt).toISOString(),
-        duration: isoDuration(video.durationSeconds),
-        embedUrl: `https://www.youtube.com/embed/${video.youtubeId}`,
-        contentUrl: `https://www.youtube.com/watch?v=${video.youtubeId}`,
-        author: { "@type": "Person", name: video.channelName },
-        // The channel made the video; the curator published this page about it.
-        contributor: { "@id": personId(base) },
-        publisher: { "@id": organizationId(base) },
-        isPartOf: { "@id": websiteId(base) },
-        ...(hasPart ? { hasPart } : {}),
-      },
-      {
-        // The page itself, authored by the curator, with the VideoObject as its
-        // main entity. This is what gives Google a Person (not the channel) to
-        // attribute the article to, and binds the page to the breadcrumb trail.
-        "@type": "WebPage",
-        "@id": `${pageUrl}#webpage`,
-        url: pageUrl,
-        name: video.title,
-        // The curator's own words describe the page when they exist.
-        ...(video.editorialNote
-          ? { description: truncateWords(video.editorialNote, 300) }
-          : {}),
-        isPartOf: { "@id": websiteId(base) },
-        author: { "@id": personId(base) },
-        mainEntity: { "@id": `${pageUrl}#video` },
-        breadcrumb: { "@id": `${pageUrl}#breadcrumb` },
-        primaryImageOfPage: { "@type": "ImageObject", url: video.thumbnailUrl },
-      },
-      {
-        "@type": "BreadcrumbList",
-        "@id": `${pageUrl}#breadcrumb`,
-        itemListElement: [
-          { "@type": "ListItem", position: 1, name: "Home", item: base },
-          {
-            "@type": "ListItem",
-            position: 2,
-            name: video.category,
-            item: `${base}/category/${categorySlug(video.category)}`,
-          },
-          { "@type": "ListItem", position: 3, name: video.title, item: pageUrl },
-        ],
-      },
-    ],
-  };
+  return [
+    {
+      "@type": "VideoObject",
+      "@id": `${pageUrl}#video`,
+      name: video.title,
+      description,
+      thumbnailUrl: [video.thumbnailUrl],
+      // uploadDate is the original YouTube upload — Google's video rich result
+      // reads it as the video's age.
+      uploadDate: new Date(video.publishedAt).toISOString(),
+      // The page's own dates are curation dates: this library resurfaces old
+      // uploads, so claiming the upload date as publication would make every
+      // page look years stale.
+      datePublished: new Date(video.curatedAt).toISOString(),
+      dateModified: new Date(video.curatedAt).toISOString(),
+      duration: isoDuration(video.durationSeconds),
+      embedUrl: `https://www.youtube.com/embed/${video.youtubeId}`,
+      contentUrl: `https://www.youtube.com/watch?v=${video.youtubeId}`,
+      author: { "@type": "Person", name: video.channelName },
+      // The channel made the video; the curator published this page about it.
+      contributor: { "@id": personId(base) },
+      publisher: { "@id": organizationId(base) },
+      isPartOf: { "@id": websiteId(base) },
+      ...(hasPart ? { hasPart } : {}),
+    },
+    {
+      // The page itself, authored by the curator, with the VideoObject as its
+      // main entity. This is what gives Google a Person (not the channel) to
+      // attribute the article to, and binds the page to the breadcrumb trail.
+      "@type": "WebPage",
+      "@id": `${pageUrl}#webpage`,
+      url: pageUrl,
+      name: video.title,
+      // The curator's own words describe the page when they exist.
+      ...(video.editorialNote
+        ? { description: truncateWords(video.editorialNote, 300) }
+        : {}),
+      isPartOf: { "@id": websiteId(base) },
+      author: { "@id": personId(base) },
+      mainEntity: { "@id": `${pageUrl}#video` },
+      breadcrumb: { "@id": `${pageUrl}#breadcrumb` },
+      primaryImageOfPage: { "@type": "ImageObject", url: video.thumbnailUrl },
+    },
+    {
+      "@type": "BreadcrumbList",
+      "@id": `${pageUrl}#breadcrumb`,
+      itemListElement: [
+        { "@type": "ListItem", position: 1, name: "Home", item: base },
+        {
+          "@type": "ListItem",
+          position: 2,
+          name: video.category,
+          item: `${base}/category/${categorySlug(video.category)}`,
+        },
+        { "@type": "ListItem", position: 3, name: video.title, item: pageUrl },
+      ],
+    },
+  ];
 }
