@@ -101,6 +101,12 @@ function isoDuration(seconds: number): string {
 export function videoNodes(video: Video, base = siteUrl()): object[] {
   const pageUrl = `${base}/video/${video.slug}`;
   const description = truncateWords(video.summary || video.title, 500);
+  // Canonical channel page for the video's author. Google reports a Person
+  // without a url as a non-critical issue, so we point at it when we know the
+  // channel id; rows ingested before the backfill fall back to just a name.
+  const channelUrl = video.channelId
+    ? `https://www.youtube.com/channel/${video.channelId}`
+    : null;
 
   // Chapters are already stored in chronological order, but sort defensively:
   // Clip.startOffset must ascend for the "Key moments" rich result.
@@ -145,7 +151,11 @@ export function videoNodes(video: Video, base = siteUrl()): object[] {
       duration: isoDuration(video.durationSeconds),
       embedUrl: `https://www.youtube.com/embed/${video.youtubeId}`,
       contentUrl: `https://www.youtube.com/watch?v=${video.youtubeId}`,
-      author: { "@type": "Person", name: video.channelName },
+      author: {
+        "@type": "Person",
+        name: video.channelName,
+        ...(channelUrl ? { "@id": channelUrl, url: channelUrl, sameAs: [channelUrl] } : {}),
+      },
       // The channel made the video; the curator published this page about it.
       contributor: { "@id": personId(base) },
       publisher: { "@id": organizationId(base) },

@@ -24,6 +24,10 @@ export interface Video {
   youtubeId: string;
   title: string;
   channelName: string;
+  // YouTube channel id (UC…) of the source channel, used to give the
+  // VideoObject.author node a canonical url. Null for rows ingested before
+  // ingest started storing it.
+  channelId: string | null;
   publishedAt: string;
   // When the video entered the library (videos.created_at) — the page's own
   // publish/modify date. publishedAt stays the original YouTube upload.

@@ -663,6 +663,7 @@ Deno.serve(async (req) => {
       slug,
       title: sn.title ?? youtubeId,
       channel_name: sn.channelTitle ?? "Unknown",
+      channel_id: sn.channelId ?? null,
       published_at: (sn.publishedAt ?? new Date().toISOString()).slice(0, 10),
       duration_sec: durationSec,
       category,

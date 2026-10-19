@@ -31,6 +31,7 @@ interface VideoRow {
   youtube_id: string;
   title: string;
   channel_name: string;
+  channel_id: string | null;
   published_at: string;
   created_at: string | null;
   duration_sec: number;
@@ -52,6 +53,7 @@ function mapRowToVideo(row: VideoRow): Video {
     youtubeId: row.youtube_id,
     title: row.title,
     channelName: row.channel_name,
+    channelId: row.channel_id ?? null,
     publishedAt: row.published_at,
     curatedAt: row.created_at ?? row.published_at,
     durationSeconds: Number(row.duration_sec),
@@ -110,6 +112,8 @@ function mapCardToVideo(row: CardRow): Video {
     youtubeId: row.youtube_id,
     title: row.title,
     channelName: row.channel_name,
+    // Card columns skip channel_id (only the video detail page's JSON-LD uses it).
+    channelId: null,
     publishedAt: row.published_at,
     curatedAt: row.created_at ?? row.published_at,
     durationSeconds: Number(row.duration_sec),

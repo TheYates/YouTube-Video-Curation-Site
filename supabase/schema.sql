@@ -8,6 +8,7 @@ create table videos (
   slug          text not null unique, -- frozen at publish; public /video/<slug> URL
   title         text not null,
   channel_name  text not null,
+  channel_id    text, -- YouTube channel id (UC…) — gives VideoObject.author a url
   published_at  date not null,
   duration_sec  integer not null,
   category      text not null,

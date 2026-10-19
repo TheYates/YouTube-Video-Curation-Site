@@ -108,3 +108,13 @@ merges the site entities (Organization / WebSite / Person) with the page's own
 nodes into a single `@graph`. Verify with a build-output grep — each prerendered
 HTML file should show `real-tags=1` (the second `application/ld+json` substring
 in the RSC flight payload is expected and harmless).
+
+The VideoObject's `author` is the **source channel**, not the curator (the
+curator is the WebPage's author/contributor). A Person with only a `name` trips
+Google's "Missing field url" advisory, so `videos.channel_id` (migration
+`20261021_video_channel_id.sql`) carries the channel id and the author node gets
+`url` + `sameAs` = `https://www.youtube.com/channel/<id>`. Ingest stores it from
+the `videos.list?part=snippet` response it already fetches; backfill older rows
+with `npm run channels:backfill -- --apply` (dry run without `--apply`; 50 ids
+per call, 1 quota unit each).
+
