@@ -42,8 +42,11 @@ export async function generateMetadata({
   if (!video) return { title: "Video not found" };
   // Word-boundary truncation: a hard slice(0, 160) cut mid-word and could leave
   // a trailing space, which is exactly what a SERP snippet shows.
+  // The curator's own write-up leads the snippet when it exists — it is the
+  // one description Google can't find anywhere else on the web.
   const description = truncateWords(
-    video.summary ||
+    video.editorialNote ||
+      video.summary ||
       `Full transcript, summary and chapters for "${video.title}" by ${video.channelName}.`,
     155
   );

@@ -225,6 +225,21 @@ export default function VideoDetail({
         </aside>
 
         <div className="order-last space-y-12 lg:order-first">
+          {/* The curator's own write-up leads the page — it's the unique,
+              human layer that distinguishes this from the source video. */}
+          {video.editorialNote && (
+            <div>
+              <h3 className="mb-4 font-mono text-xs uppercase tracking-widest text-(--color-accent)">
+                Curator’s Note
+              </h3>
+              <div className="space-y-4 text-base leading-relaxed text-(--color-foreground)">
+                {video.editorialNote.split(/\n{2,}/).map((para, i) => (
+                  <p key={i}>{para}</p>
+                ))}
+              </div>
+            </div>
+          )}
+
           <SummaryPanel summary={video.summary} takeaways={video.takeaways} affiliateLinks={video.affiliateLinks} />
 
           <div>

@@ -157,6 +157,10 @@ export function videoJsonLd(video: Video, base = siteUrl()) {
         "@id": `${pageUrl}#webpage`,
         url: pageUrl,
         name: video.title,
+        // The curator's own words describe the page when they exist.
+        ...(video.editorialNote
+          ? { description: truncateWords(video.editorialNote, 300) }
+          : {}),
         isPartOf: { "@id": websiteId(base) },
         author: { "@id": personId(base) },
         mainEntity: { "@id": `${pageUrl}#video` },

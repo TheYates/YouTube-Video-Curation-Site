@@ -15,6 +15,7 @@ create table videos (
   summary       text,
   takeaways     text[],
   tags          text[],
+  editorial_note text, -- 150–300 word human write-up; the page's unique layer
   transcript_text text,
   transcript_tsv tsvector generated always as (
     to_tsvector('english',

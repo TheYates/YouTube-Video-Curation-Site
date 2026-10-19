@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
 import { getAdminCategories, getAdminVideoDetail } from "@/lib/admin-data";
+import { curate } from "@/lib/curate-client";
 import AdminSkeleton from "@/components/admin-skeleton";
 
 const RELAY_URL = process.env.NEXT_PUBLIC_INGEST_RELAY_URL ?? "http://127.0.0.1:8931";
@@ -83,6 +84,8 @@ export default function AdminVideoEditPage() {
   const [tagsInput, setTagsInput] = useState("");
   const [publishedAt, setPublishedAt] = useState("");
   const [summary, setSummary] = useState("");
+  const [editorialNote, setEditorialNote] = useState("");
+  const [saving, setSaving] = useState(false);
   const [takeaways, setTakeaways] = useState<string[]>([]);
   const [affiliateLinks, setAffiliateLinks] = useState<AffiliateLink[]>([]);
   const [chapters, setChapters] = useState<
@@ -112,6 +115,7 @@ export default function AdminVideoEditPage() {
         setTagsInput(video.tags.join(", "));
         setPublishedAt(video.publishedAt);
         setSummary(video.summary);
+        setEditorialNote(video.editorialNote);
         setTakeaways(video.takeaways);
         setAffiliateLinks(video.affiliateLinks);
         setChapters(video.chapters);
@@ -135,8 +139,28 @@ export default function AdminVideoEditPage() {
 
   const tags = tagsInput.split(",").map((t) => t.trim()).filter(Boolean);
 
-  function handleSave() {
-    toast.success("Changes saved");
+  // Writes through the `curate` edge function (service role): the admin UI
+  // never holds a write key. Only the fields below are persisted — chapters and
+  // affiliate links have their own controls and are not part of this save.
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const res = await curate({
+        action: "update-video",
+        id,
+        title,
+        channel_name: channel,
+        category,
+        published_at: publishedAt,
+        summary,
+        takeaways: takeaways.map((t) => t.trim()).filter(Boolean),
+        tags,
+        editorial_note: editorialNote,
+      });
+      if (res) toast.success("Changes saved");
+    } finally {
+      setSaving(false);
+    }
   }
 
   function updateTakeaway(i: number, val: string) {
@@ -225,6 +249,14 @@ export default function AdminVideoEditPage() {
           <InputField label="Published Date" value={publishedAt} onChange={setPublishedAt} type="date" />
           <div className="col-span-2">
             <InputField label="Summary" value={summary} onChange={setSummary} rows={4} />
+          </div>
+          <div className="col-span-2">
+            <InputField
+              label="Curator’s Note — editorial (150–300 words, human-written)"
+              value={editorialNote}
+              onChange={setEditorialNote}
+              rows={10}
+            />
           </div>
         </div>
 
@@ -420,10 +452,11 @@ export default function AdminVideoEditPage() {
         <div className="flex items-center gap-4 pt-2 border-t" style={{ borderColor: "var(--color-border)" }}>
           <button
             onClick={handleSave}
-            className="rounded-sm px-6 py-2.5 font-mono text-xs uppercase tracking-widest transition-opacity hover:opacity-80"
+            disabled={saving}
+            className="rounded-sm px-6 py-2.5 font-mono text-xs uppercase tracking-widest transition-opacity hover:opacity-80 disabled:opacity-40"
             style={{ background: "var(--color-accent)", color: "var(--color-accent-foreground)" }}
           >
-            Save Changes
+            {saving ? "Saving…" : "Save Changes"}
           </button>
           <Link
             href="/admin/videos"

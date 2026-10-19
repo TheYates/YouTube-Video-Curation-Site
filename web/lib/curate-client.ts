@@ -17,7 +17,19 @@ type CurateAction =
   | { action: "toggle-channel"; id: string; enabled: boolean }
   | { action: "add-query"; query: string; category: string }
   | { action: "remove-query"; id: string }
-  | { action: "toggle-query"; id: string; enabled: boolean };
+  | { action: "toggle-query"; id: string; enabled: boolean }
+  | {
+      action: "update-video";
+      id: string;
+      title?: string;
+      channel_name?: string;
+      category?: string;
+      published_at?: string;
+      summary?: string;
+      takeaways?: string[];
+      tags?: string[];
+      editorial_note?: string;
+    };
 
 export async function curate(payload: CurateAction): Promise<Record<string, unknown> | null> {
   const sb = getBrowserSupabase();

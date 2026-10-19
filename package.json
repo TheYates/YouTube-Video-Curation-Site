@@ -14,7 +14,8 @@
     "auto": "node scripts/auto-pipeline.mjs",
     "sources:backfill": "node scripts/backfill-sources.mjs",
     "tags:backfill": "node scripts/backfill-tags.mjs",
-    "duplicates:merge": "node scripts/merge-duplicates.mjs"
+    "duplicates:merge": "node scripts/merge-duplicates.mjs",
+    "editorial:draft": "node scripts/draft-editorial.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",

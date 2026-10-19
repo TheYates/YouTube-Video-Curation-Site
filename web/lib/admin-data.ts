@@ -77,6 +77,7 @@ export interface AdminVideoDetail {
   summary: string;
   takeaways: string[];
   tags: string[];
+  editorialNote: string;
   chapters: {
     id: string;
     title: string;
@@ -111,6 +112,7 @@ export async function getAdminVideoDetail(
     summary: string | null;
     takeaways: string[] | null;
     tags: string[] | null;
+    editorial_note: string | null;
     chapters: {
       id: string;
       title: string;
@@ -132,6 +134,7 @@ export async function getAdminVideoDetail(
     summary: row.summary ?? "",
     takeaways: row.takeaways ?? [],
     tags: row.tags ?? [],
+    editorialNote: row.editorial_note ?? "",
     chapters: (row.chapters ?? []).map((c) => ({
       id: c.id,
       title: c.title,

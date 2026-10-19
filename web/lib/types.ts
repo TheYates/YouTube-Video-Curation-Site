@@ -33,6 +33,9 @@ export interface Video {
   thumbnailUrl: string;
   summary: string;
   takeaways: string[];
+  // Human-written editorial note (150–300 words). Empty when not yet written;
+  // the video page then falls back to the AI summary exactly as before.
+  editorialNote: string;
   chapters: Chapter[];
   transcript: TranscriptWord[];
   tags: string[];

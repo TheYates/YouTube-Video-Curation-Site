@@ -12,6 +12,9 @@
 //   { action: "remove-query",  id }
 //   { action: "toggle-channel", id, enabled }
 //   { action: "toggle-query",   id, enabled }
+//   { action: "update-video",  id, ...{ title, channel_name, category,
+//        published_at, summary, takeaways, tags, editorial_note } }
+//        — only the fields present are written (the /admin video editor)
 //
 // Auth (same pattern as supabase/functions/ingest): the gateway's verify_jwt
 // rejects anonymous calls, then this function verifies the caller's email
@@ -166,6 +169,65 @@ Deno.serve(async (req) => {
     const { error } = await sb.from("search_queries").update({ enabled: body.enabled === true }).eq("id", id)
     if (error) return json({ error: `Update failed: ${error.message}` }, 500)
     return json({ ok: true, id, enabled: body.enabled === true })
+  }
+
+  // ── Video edits (from /admin/videos/[id]) ──
+  // The one place the admin UI can write video fields. Each key is optional:
+  // only the fields present in the body are written, so the editor can save a
+  // single field without clobbering the rest. Values are validated/typed here
+  // rather than trusted from the client.
+  if (action === "update-video") {
+    const id = String(body.id ?? "")
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "Invalid video id." }, 400)
+
+    const str = (v: unknown) => (typeof v === "string" ? v.trim() : null)
+    const strArray = (v: unknown) =>
+      Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean) : null
+
+    const update: Record<string, unknown> = {}
+
+    if (body.title !== undefined) {
+      const title = str(body.title)
+      if (!title) return json({ error: "Title cannot be empty." }, 400)
+      update.title = title
+    }
+    if (body.channel_name !== undefined) {
+      const channelName = str(body.channel_name)
+      if (!channelName) return json({ error: "Channel name cannot be empty." }, 400)
+      update.channel_name = channelName
+    }
+    if (body.category !== undefined) {
+      const category = str(body.category)
+      if (!category) return json({ error: "Category cannot be empty." }, 400)
+      update.category = category
+    }
+    if (body.published_at !== undefined) {
+      const publishedAt = str(body.published_at)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(publishedAt ?? "")) {
+        return json({ error: "published_at must be YYYY-MM-DD." }, 400)
+      }
+      update.published_at = publishedAt
+    }
+    if (body.summary !== undefined) update.summary = str(body.summary) ?? ""
+    if (body.editorial_note !== undefined) update.editorial_note = str(body.editorial_note) ?? ""
+    if (body.tags !== undefined) {
+      const tags = strArray(body.tags)
+      if (tags === null) return json({ error: "tags must be an array." }, 400)
+      update.tags = tags
+    }
+    if (body.takeaways !== undefined) {
+      const takeaways = strArray(body.takeaways)
+      if (takeaways === null) return json({ error: "takeaways must be an array." }, 400)
+      update.takeaways = takeaways
+    }
+
+    if (Object.keys(update).length === 0) {
+      return json({ error: "No editable fields provided." }, 400)
+    }
+
+    const { error } = await sb.from("videos").update(update).eq("id", id)
+    if (error) return json({ error: `Update failed: ${error.message}` }, 500)
+    return json({ ok: true, id, fields: Object.keys(update) })
   }
 
   return json({ error: `Unknown action: ${action || "(empty)"}` }, 400)

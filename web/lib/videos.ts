@@ -39,6 +39,7 @@ interface VideoRow {
   summary: string | null;
   takeaways: string[] | null;
   tags: string[] | null;
+  editorial_note: string | null;
   chapters: ChapterRow[] | null;
   transcript_words: WordRow[] | null;
   affiliate_links: AffiliateRow[] | null;
@@ -58,6 +59,7 @@ function mapRowToVideo(row: VideoRow): Video {
     thumbnailUrl: row.thumbnail_url,
     summary: row.summary ?? "",
     takeaways: row.takeaways ?? [],
+    editorialNote: row.editorial_note ?? "",
     chapters: (row.chapters ?? []).map((c) => ({
       title: c.title,
       startTime: Number(c.start_time),
@@ -115,6 +117,8 @@ function mapCardToVideo(row: CardRow): Video {
     thumbnailUrl: row.thumbnail_url,
     summary: row.summary ?? "",
     takeaways: row.takeaways ?? [],
+    // Cards never render the editorial note; the full row supplies it.
+    editorialNote: "",
     chapters: [],
     transcript: [],
     tags: row.tags ?? [],
