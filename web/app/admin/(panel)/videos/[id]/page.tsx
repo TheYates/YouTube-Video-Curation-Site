@@ -85,6 +85,8 @@ export default function AdminVideoEditPage() {
   const [publishedAt, setPublishedAt] = useState("");
   const [summary, setSummary] = useState("");
   const [editorialNote, setEditorialNote] = useState("");
+  const [editorialReviewedAt, setEditorialReviewedAt] = useState<string | null>(null);
+  const [markDraft, setMarkDraft] = useState(false);
   const [saving, setSaving] = useState(false);
   const [takeaways, setTakeaways] = useState<string[]>([]);
   const [affiliateLinks, setAffiliateLinks] = useState<AffiliateLink[]>([]);
@@ -116,6 +118,7 @@ export default function AdminVideoEditPage() {
         setPublishedAt(video.publishedAt);
         setSummary(video.summary);
         setEditorialNote(video.editorialNote);
+        setEditorialReviewedAt(video.editorialReviewedAt);
         setTakeaways(video.takeaways);
         setAffiliateLinks(video.affiliateLinks);
         setChapters(video.chapters);
@@ -156,8 +159,13 @@ export default function AdminVideoEditPage() {
         takeaways: takeaways.map((t) => t.trim()).filter(Boolean),
         tags,
         editorial_note: editorialNote,
+        ...(markDraft ? { editorial_reviewed: false } : {}),
       });
-      if (res) toast.success("Changes saved");
+      if (res) {
+        setEditorialReviewedAt(markDraft ? null : new Date().toISOString());
+        setMarkDraft(false);
+        toast.success("Changes saved");
+      }
     } finally {
       setSaving(false);
     }
@@ -251,12 +259,60 @@ export default function AdminVideoEditPage() {
             <InputField label="Summary" value={summary} onChange={setSummary} rows={4} />
           </div>
           <div className="col-span-2">
-            <InputField
-              label="Curator’s Note — editorial (150–300 words, human-written)"
-              value={editorialNote}
-              onChange={setEditorialNote}
+            <div className="mb-1.5 flex items-center justify-between gap-3">
+              <label
+                className="block font-mono text-[10px] uppercase tracking-widest"
+                style={{ color: "var(--color-muted-foreground)" }}
+              >
+                Curator’s Note — editorial (150–300 words, human-written)
+              </label>
+              <span
+                className="shrink-0 rounded-sm px-2 py-0.5 font-mono text-[10px] uppercase"
+                style={{
+                  background:
+                    editorialReviewedAt && !markDraft
+                      ? "var(--color-accent)"
+                      : "var(--color-muted)",
+                  color:
+                    editorialReviewedAt && !markDraft
+                      ? "var(--color-accent-foreground)"
+                      : "var(--color-muted-foreground)",
+                }}
+              >
+                {editorialReviewedAt && !markDraft
+                  ? `Reviewed ${editorialReviewedAt.slice(0, 10)}`
+                  : "Draft — not reviewed"}
+              </span>
+            </div>
+            <textarea
               rows={10}
+              value={editorialNote}
+              onChange={(e) => setEditorialNote(e.target.value)}
+              className="w-full rounded-sm border px-3 py-2 text-sm outline-none transition-colors focus:border-[var(--color-accent)]"
+              style={inputBase}
             />
+            <div className="mt-1.5 flex items-center gap-3">
+              <p className="text-xs" style={{ color: "var(--color-muted-foreground)" }}>
+                Saving marks this reviewed. AI drafts start unreviewed.
+              </p>
+              {editorialReviewedAt && !markDraft ? (
+                <button
+                  onClick={() => setMarkDraft(true)}
+                  className="ml-auto font-mono text-[10px] uppercase tracking-wide hover:text-[var(--color-accent)]"
+                  style={{ color: "var(--color-muted-foreground)" }}
+                >
+                  Mark as draft
+                </button>
+              ) : markDraft ? (
+                <button
+                  onClick={() => setMarkDraft(false)}
+                  className="ml-auto font-mono text-[10px] uppercase tracking-wide hover:text-[var(--color-accent)]"
+                  style={{ color: "var(--color-muted-foreground)" }}
+                >
+                  Undo — keep reviewed
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
 

@@ -30,6 +30,7 @@ type CurateAction =
       takeaways?: string[];
       tags?: string[];
       editorial_note?: string;
+      editorial_reviewed?: boolean;
     };
 
 export async function curate(payload: CurateAction): Promise<Record<string, unknown> | null> {

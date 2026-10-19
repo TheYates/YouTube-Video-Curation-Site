@@ -16,6 +16,7 @@ create table videos (
   takeaways     text[],
   tags          text[],
   editorial_note text, -- 150–300 word human write-up; the page's unique layer
+  editorial_reviewed_at timestamptz, -- set when a human reviews the note; null = AI draft
   transcript_text text,
   transcript_tsv tsvector generated always as (
     to_tsvector('english',

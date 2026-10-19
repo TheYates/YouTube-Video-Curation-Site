@@ -39,6 +39,7 @@ export default function AdminDashboardPage() {
 
   const totalWords = videos.reduce((acc, v) => acc + v.wordCount, 0);
   const totalChapters = videos.reduce((acc, v) => acc + v.chapterCount, 0);
+  const reviewed = videos.filter((v) => v.editorialReviewed).length;
   const recentVideos = [...videos]
     .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
     .slice(0, 5);
@@ -46,6 +47,7 @@ export default function AdminDashboardPage() {
   const statCards = [
     { label: "Total Videos", value: String(videos.length) },
     { label: "Categories", value: String(cats.length - 1) },
+    { label: "Editorial Reviewed", value: `${reviewed} / ${videos.length}` },
     { label: "Transcript Words", value: totalWords.toLocaleString() },
     { label: "Chapters", value: totalChapters.toLocaleString() },
   ];
@@ -63,7 +65,7 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-10">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         {statCards.map((card) => (
           <div
             key={card.label}

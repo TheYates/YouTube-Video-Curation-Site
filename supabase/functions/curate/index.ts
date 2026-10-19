@@ -18,8 +18,12 @@
 //   { action: "toggle-channel", id, enabled }
 //   { action: "toggle-query",   id, enabled }
 //   { action: "update-video",  id, ...{ title, channel_name, category,
-//        published_at, summary, takeaways, tags, editorial_note } }
-//        — only the fields present are written (the /admin video editor)
+//        published_at, summary, takeaways, tags, editorial_note,
+//        editorial_reviewed } }
+//        — only the fields present are written (the /admin video editor).
+//          Saving editorial_note marks the note human-reviewed (stamps
+//          editorial_reviewed_at); editorial_reviewed:false clears that back to
+//          an AI draft.
 //
 // Auth (same pattern as supabase/functions/ingest): the gateway's verify_jwt
 // rejects anonymous calls, then this function verifies the caller's email
@@ -238,7 +242,13 @@ Deno.serve(async (req) => {
       update.published_at = publishedAt
     }
     if (body.summary !== undefined) update.summary = str(body.summary) ?? ""
-    if (body.editorial_note !== undefined) update.editorial_note = str(body.editorial_note) ?? ""
+    if (body.editorial_note !== undefined) {
+      update.editorial_note = str(body.editorial_note) ?? ""
+      // Saving the note IS the review action: it flips the AI draft to
+      // human-reviewed. The explicit false (the "Mark as draft" button) wins.
+      update.editorial_reviewed_at = new Date().toISOString()
+    }
+    if (body.editorial_reviewed === false) update.editorial_reviewed_at = null
     if (body.tags !== undefined) {
       const tags = strArray(body.tags)
       if (tags === null) return json({ error: "tags must be an array." }, 400)

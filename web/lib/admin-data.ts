@@ -19,12 +19,13 @@ export interface AdminVideo {
   affiliateCount: number;
   wordCount: number;
   chapterCount: number;
+  editorialReviewed: boolean;
 }
 
 export async function listAdminVideos(sb: SupabaseClient): Promise<AdminVideo[]> {
   const { data, error } = await sb
     .from("videos")
-    .select("id,slug,youtube_id,title,channel_name,published_at,created_at,duration_sec,category,thumbnail_url,chapters(id),affiliate_links(id)")
+    .select("id,slug,youtube_id,title,channel_name,published_at,created_at,duration_sec,category,thumbnail_url,editorial_reviewed_at,chapters(id),affiliate_links(id)")
     .order("created_at", { ascending: false });
   if (error) throw error;
   const rows = (data ?? []) as Array<{
@@ -38,6 +39,7 @@ export async function listAdminVideos(sb: SupabaseClient): Promise<AdminVideo[]>
     duration_sec: number;
     category: string;
     thumbnail_url: string;
+    editorial_reviewed_at: string | null;
     chapters: { id: string }[] | null;
     affiliate_links: { id: string }[] | null;
   }>;
@@ -63,6 +65,7 @@ export async function listAdminVideos(sb: SupabaseClient): Promise<AdminVideo[]>
     affiliateCount: r.affiliate_links?.length ?? 0,
     wordCount: counts[i].count ?? 0,
     chapterCount: r.chapters?.length ?? 0,
+    editorialReviewed: r.editorial_reviewed_at != null,
   }));
 }
 
@@ -78,6 +81,7 @@ export interface AdminVideoDetail {
   takeaways: string[];
   tags: string[];
   editorialNote: string;
+  editorialReviewedAt: string | null;
   chapters: {
     id: string;
     title: string;
@@ -113,6 +117,7 @@ export async function getAdminVideoDetail(
     takeaways: string[] | null;
     tags: string[] | null;
     editorial_note: string | null;
+    editorial_reviewed_at: string | null;
     chapters: {
       id: string;
       title: string;
@@ -135,6 +140,7 @@ export async function getAdminVideoDetail(
     takeaways: row.takeaways ?? [],
     tags: row.tags ?? [],
     editorialNote: row.editorial_note ?? "",
+    editorialReviewedAt: row.editorial_reviewed_at ?? null,
     chapters: (row.chapters ?? []).map((c) => ({
       id: c.id,
       title: c.title,
