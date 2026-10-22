@@ -4,7 +4,51 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { getBrowserSupabase } from "@/lib/supabase-browser";
 import { curate } from "@/lib/curate-client";
-import { listCandidates, type VideoCandidate } from "@/lib/admin-data";
+import { listCandidates, listDecidedCandidates, type VideoCandidate } from "@/lib/admin-data";
+
+const PAGE_SIZE = 20;
+
+function Pager({
+  page,
+  pageCount,
+  total,
+  onPage,
+}: {
+  page: number;
+  pageCount: number;
+  total: number;
+  onPage: (p: number) => void;
+}) {
+  if (pageCount <= 1) return null;
+  const from = (page - 1) * PAGE_SIZE + 1;
+  const to = Math.min(page * PAGE_SIZE, total);
+  return (
+    <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+      <button
+        onClick={() => onPage(Math.max(1, page - 1))}
+        disabled={page <= 1}
+        className="font-mono text-xs uppercase tracking-wide transition-colors hover:text-[var(--color-foreground)] disabled:opacity-30"
+        style={{ color: "var(--color-muted-foreground)" }}
+      >
+        ← Prev
+      </button>
+      <span className="font-mono text-xs" style={{ color: "var(--color-muted-foreground)" }}>
+        {page} / {pageCount}
+      </span>
+      <button
+        onClick={() => onPage(Math.min(pageCount, page + 1))}
+        disabled={page >= pageCount}
+        className="font-mono text-xs uppercase tracking-wide transition-colors hover:text-[var(--color-foreground)] disabled:opacity-30"
+        style={{ color: "var(--color-muted-foreground)" }}
+      >
+        Next →
+      </button>
+      <span className="font-mono text-[10px]" style={{ color: "var(--color-muted-foreground)" }}>
+        {from}–{to} of {total}
+      </span>
+    </div>
+  );
+}
 
 const fmtDuration = (s: number) => {
   const m = Math.round(s / 60);
@@ -42,10 +86,10 @@ function CandidateCard({
         <img
           src={c.thumbnailUrl || `https://i.ytimg.com/vi/${c.youtubeId}/mqdefault.jpg`}
           alt=""
-          width={168}
-          height={94}
+          width={144}
+          height={81}
           className="rounded-sm object-cover"
-          style={{ width: 168, height: 94 }}
+          style={{ width: 144, height: 81 }}
         />
       </a>
       <div className="min-w-0 flex-1">
@@ -54,7 +98,7 @@ function CandidateCard({
             href={`https://www.youtube.com/watch?v=${c.youtubeId}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-sm font-bold leading-snug hover:text-[var(--color-accent)] transition-colors"
+            className="line-clamp-2 text-sm font-bold leading-snug hover:text-[var(--color-accent)] transition-colors"
             style={{ color: "var(--color-foreground)" }}
           >
             {c.title}
@@ -85,7 +129,7 @@ function CandidateCard({
             {c.reason}
           </p>
         )}
-        <div className="mt-3 flex items-center gap-3">
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
           <button
             onClick={() => onDecide(c.id, true, publishAt || null)}
             disabled={busy}
@@ -200,6 +244,8 @@ export default function AdminReviewPage() {
   const [dbMissing, setDbMissing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [showDecided, setShowDecided] = useState(false);
+  const [page, setPage] = useState(1);
+  const [decidedPage, setDecidedPage] = useState(1);
 
   const load = useCallback(async () => {
     const sb = getBrowserSupabase();
@@ -209,8 +255,8 @@ export default function AdminReviewPage() {
     }
     try {
       const [p, d] = await Promise.all([
-        listCandidates(sb, ["pending"], 200),
-        listCandidates(sb, ["approved", "rejected", "ingested", "failed"], 50),
+        listCandidates(sb, ["pending"], 1000),
+        listDecidedCandidates(sb, ["approved", "rejected", "ingested", "failed"], 200),
       ]);
       setPending(p);
       setDecided(d);
@@ -293,9 +339,21 @@ export default function AdminReviewPage() {
     return map[s];
   };
 
+  // Client-side paging (matches /admin/videos). Clamp so deciding the last card
+  // on the last page doesn't strand the view on an empty page.
+  const pendingPages = Math.max(1, Math.ceil(pending.length / PAGE_SIZE));
+  const pageSafe = Math.min(page, pendingPages);
+  const pagedPending = pending.slice((pageSafe - 1) * PAGE_SIZE, pageSafe * PAGE_SIZE);
+  const decidedPages = Math.max(1, Math.ceil(decided.length / PAGE_SIZE));
+  const decidedPageSafe = Math.min(decidedPage, decidedPages);
+  const pagedDecided = decided.slice((decidedPageSafe - 1) * PAGE_SIZE, decidedPageSafe * PAGE_SIZE);
+
   return (
-    <div className="max-w-3xl space-y-8">
-      <p className="text-sm leading-relaxed" style={{ color: "var(--color-muted-foreground)" }}>
+    <div className="max-w-6xl space-y-8">
+      <p
+        className="max-w-3xl text-sm leading-relaxed"
+        style={{ color: "var(--color-muted-foreground)" }}
+      >
         Videos discovered from your source channels, saved searches, and related-video mining.
         Nothing goes public until you approve it — the scheduled auto-pipeline ingests approved
         candidates on your machine (<code className="font-mono">npm run auto</code>). Approve
@@ -334,11 +392,19 @@ export default function AdminReviewPage() {
             scheduled run) to fetch new candidates.
           </div>
         ) : (
-          <div className="space-y-3">
-            {pending.map((c) => (
-              <CandidateCard key={c.id} c={c} onDecide={decide} busy={busyId === c.id} />
-            ))}
-          </div>
+          <>
+            <div className="grid gap-3 xl:grid-cols-2">
+              {pagedPending.map((c) => (
+                <CandidateCard key={c.id} c={c} onDecide={decide} busy={busyId === c.id} />
+              ))}
+            </div>
+            <Pager
+              page={pageSafe}
+              pageCount={pendingPages}
+              total={pending.length}
+              onPage={setPage}
+            />
+          </>
         )}
       </div>
 
@@ -352,8 +418,9 @@ export default function AdminReviewPage() {
             {showDecided ? "Hide" : "Show"} recent decisions ({decided.length})
           </button>
           {showDecided && (
-            <div className="space-y-2">
-              {decided.map((c) => {
+            <>
+              <div className="space-y-2">
+                {pagedDecided.map((c) => {
                 const badge = statusBadge(c.status);
                 return (
                   <div
@@ -398,7 +465,14 @@ export default function AdminReviewPage() {
                   </div>
                 );
               })}
-            </div>
+              </div>
+              <Pager
+                page={decidedPageSafe}
+                pageCount={decidedPages}
+                total={decided.length}
+                onPage={setDecidedPage}
+              />
+            </>
           )}
         </div>
       )}

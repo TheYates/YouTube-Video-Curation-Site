@@ -194,6 +194,7 @@ export interface VideoCandidate {
   attempts: number;
   createdAt: string;
   publishAt: string | null;
+  decidedAt: string | null;
 }
 
 function mapCandidate(r: {
@@ -213,6 +214,7 @@ function mapCandidate(r: {
   attempts: number;
   created_at: string;
   publish_at: string | null;
+  decided_at: string | null;
 }): VideoCandidate {
   return {
     id: r.id,
@@ -231,6 +233,7 @@ function mapCandidate(r: {
     attempts: r.attempts,
     createdAt: r.created_at,
     publishAt: r.publish_at ?? null,
+    decidedAt: r.decided_at ?? null,
   };
 }
 
@@ -245,6 +248,23 @@ export async function listCandidates(
     .in("status", statuses)
     .order("score", { ascending: false })
     .order("created_at", { ascending: true })
+    .limit(limit);
+  if (error) throw error;
+  return ((data ?? []) as Parameters<typeof mapCandidate>[0][]).map(mapCandidate);
+}
+
+// Decisions are read newest-first — the "recent decisions" list is a log, not a
+// ranking, so decided_at (not score) is the right sort key.
+export async function listDecidedCandidates(
+  sb: SupabaseClient,
+  statuses: CandidateStatus[],
+  limit = 100
+): Promise<VideoCandidate[]> {
+  const { data, error } = await sb
+    .from("video_candidates")
+    .select("*")
+    .in("status", statuses)
+    .order("decided_at", { ascending: false, nullsFirst: false })
     .limit(limit);
   if (error) throw error;
   return ((data ?? []) as Parameters<typeof mapCandidate>[0][]).map(mapCandidate);
