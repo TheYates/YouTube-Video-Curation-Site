@@ -12,7 +12,7 @@
 
 import { pathToFileURL } from "node:url";
 
-const KEY = process.env.INDEXNOW_KEY ?? "b617fe8f894aa7e1eb361ee0c7f94f32";
+const KEY = process.env.INDEXNOW_KEY ?? "1244baf298f938e625a46d29dfe69672";
 const FALLBACK_ORIGIN = "https://curateur-ashy.vercel.app";
 
 function siteOrigin() {

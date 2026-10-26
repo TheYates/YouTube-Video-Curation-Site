@@ -82,7 +82,7 @@ with Mon/Wed/Fri dates in one sitting — it costs nothing extra and produces an
 even feed instead of a spike.
 
 Enable IndexNow once: deploy the app so `https://<host>/<key>.txt` is live
-(`web/public/b617fe8f894aa7e1eb361ee0c7f94f32.txt`) and keep `SITE_URL` in
+(`web/public/1244baf298f938e625a46d29dfe69672.txt`) and keep `SITE_URL` in
 `scripts/.env` pointed at that host. New publishes are submitted automatically
 (`scripts/indexnow.mjs`, wired into `ingest-core.mjs`). Bulk resubmit with
 `npm run indexnow -- --sitemap`, or one URL with `npm run indexnow -- /video/<slug>`.
