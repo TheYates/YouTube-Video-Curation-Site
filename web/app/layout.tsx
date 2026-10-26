@@ -33,6 +33,12 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary",
   },
+  // Bing Webmaster Tools ownership. Keep this after verification succeeds.
+  verification: {
+    other: {
+      "msvalidate.01": "168284734D4C51A1DC413541751AD74E",
+    },
+  },
 };
 
 // Organization + WebSite + Person are site-wide entities. They are no longer
